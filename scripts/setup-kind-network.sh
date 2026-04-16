@@ -35,7 +35,17 @@ docker exec "$KIND_NODE" iptables -t nat -C POSTROUTING -s "$POD_CIDR" -d "$COMP
   docker exec "$KIND_NODE" iptables -t nat -A POSTROUTING -s "$POD_CIDR" -d "$COMPOSE_CIDR" -j MASQUERADE
 
 echo ""
-echo "✓ Configuração de rede concluída!"
+echo "==> Restaurando port-forwards..."
+pkill -f "kubectl port-forward svc/weather-api" 2>/dev/null || true
+pkill -f "kubectl port-forward svc/argocd-server" 2>/dev/null || true
+sleep 1
+kubectl port-forward svc/weather-api -n weather 9091:80 &>/dev/null &
+kubectl port-forward svc/argocd-server -n argocd 8080:443 &>/dev/null &
+echo "    weather-api  → localhost:9091"
+echo "    argocd       → localhost:8080"
+
+echo ""
+echo "✓ Configuração concluída!"
 echo ""
 echo "  IP do otel-collector na rede kind_bridge: 172.23.0.50"
 echo "  Os pods do kind já conseguem enviar telemetria para o OTel Collector."
