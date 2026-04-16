@@ -32,6 +32,9 @@ data:
               target: job
           - labels:
               job:
+          - drop:
+              expression: 'opentelemetry\.sdk\.|otel-auto-instrumentation-python|MaxRetryError|NewConnectionError|ConnectionRefusedError|Failed to establish a new connection'
+              drop_counter_reason: otel_sdk_internal_noise
         static_configs:
           - targets:
               - localhost
