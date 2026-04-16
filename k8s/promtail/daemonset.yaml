@@ -31,6 +31,8 @@ spec:
             - name: varlibdockercontainers
               mountPath: /var/lib/docker/containers
               readOnly: true
+            - name: positions
+              mountPath: /run/promtail
           ports:
             - containerPort: 9080
               name: http-metrics
@@ -50,3 +52,7 @@ spec:
         - name: varlibdockercontainers
           hostPath:
             path: /var/lib/docker/containers
+        - name: positions
+          hostPath:
+            path: /run/promtail
+            type: DirectoryOrCreate
