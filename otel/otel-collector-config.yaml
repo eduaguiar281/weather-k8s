@@ -23,16 +23,6 @@ processors:
     limit_mib: 512
     spike_limit_mib: 128
 
-  # Copia trace_id/span_id do contexto OTLP para atributos do log record,
-  # promovendo-os como labels do Loki via hint loki.attribute.labels.
-  transform/loki-trace:
-    log_statements:
-      - context: log
-        statements:
-          - 'set(attributes["trace_id"], Hex(trace_id))'
-          - 'set(attributes["span_id"], Hex(span_id))'
-          - 'set(attributes["loki.attribute.labels"], "trace_id,span_id")'
-          - 'set(body, Concat([body, " trace_id=", Hex(trace_id)], ""))'
 
 exporters:
   # Traces → Jaeger
@@ -72,5 +62,5 @@ service:
 
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch, transform/loki-trace]
+      processors: [memory_limiter, batch]
       exporters: [loki, debug]
