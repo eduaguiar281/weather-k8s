@@ -1,0 +1,207 @@
+version: '3.8'
+
+services:
+
+  # ────────────────────────────────────────────
+  # TRACING — Jaeger
+  # ────────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "14268:14268"   # HTTP collector (legado)
+      - "14250:14250"   # gRPC collector
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────
+  # MÉTRICAS — Prometheus
+  # ────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'
+    ports:
+      - "9090:9090"
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────
+  # ALERTAS — Alertmanager
+  # ────────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    ports:
+      - "9093:9093"
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────
+  # LOGS — Loki
+  # ────────────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.7
+    container_name: loki
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────
+  # LOG SHIPPER — Promtail
+  # (coleta logs do host e envia pro Loki)
+  # ────────────────────────────────────────────
+  promtail:
+    image: grafana/promtail:2.9.7
+    container_name: promtail
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yml
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - observability
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────
+  # PIPELINE — OpenTelemetry Collector
+  # (recebe traces/métricas/logs e roteia)
+  # ────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    container_name: otel-collector
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    ports:
+      - "4317:4317"   # OTLP gRPC  (use na sua app)
+      - "4318:4318"   # OTLP HTTP  (use na sua app)
+      - "8889:8889"   # Métricas do próprio collector (para o Prometheus raspar)
+    depends_on:
+      - jaeger
+      - prometheus
+      - loki
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────
+  # HOST METRICS — Node Exporter
+  # ────────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.8.0
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────
+  # BANCO DE DADOS — PostgreSQL
+  # ────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_DB: weather-db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - observability
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d weather-db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ────────────────────────────────────────────
+  # API — Weather API (FastAPI + uvicorn)
+  # ────────────────────────────────────────────
+  weather-api:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: weather-api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: weather-db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ────────────────────────────────────────────
+  # VISUALIZAÇÃO — Grafana
+  # ────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger
+    networks:
+      - observability
+    restart: unless-stopped
+
+# ────────────────────────────────────────────
+# VOLUMES
+# ────────────────────────────────────────────
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  postgres_data:
+
+# ────────────────────────────────────────────
+# REDE
+# ────────────────────────────────────────────
+networks:
+  observability:
+    driver: bridge

@@ -1,0 +1,65 @@
+# OpenTelemetry Collector — recebe telemetria da sua aplicação
+# e roteia para os backends corretos.
+#
+# Sua app deve enviar para:
+#   gRPC → otel-collector:4317
+#   HTTP → otel-collector:4318
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+exporters:
+  # Traces → Jaeger
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Métricas → Prometheus (expõe endpoint para o Prometheus raspar)
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: otel
+
+  # Logs → Loki
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    default_labels_enabled:
+      exporter: true
+      job: true
+
+  # Debug (opcional — comentar em produção)
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [loki]
