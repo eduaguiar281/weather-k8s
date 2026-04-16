@@ -1,22 +1,93 @@
 {
   "uid": "weather-api-logs",
   "title": "Weather API — Logs",
-  "tags": ["weather-api", "otel", "logs"],
+  "tags": ["weather-api", "logs", "loki"],
   "timezone": "browser",
   "schemaVersion": 38,
   "refresh": "15s",
   "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "type": "custom",
+        "label": "Container",
+        "current": { "value": "weather-api", "text": "weather-api" },
+        "options": [
+          { "value": "weather-api", "text": "weather-api", "selected": true },
+          { "value": "opentelemetry-auto-instrumentation-python", "text": "otel-init", "selected": false }
+        ]
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
-      "type": "text",
-      "title": "Logs da Aplicação — Configuração Necessária",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 6 },
+      "type": "logs",
+      "title": "Logs — weather-api",
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 20 },
       "options": {
-        "mode": "markdown",
-        "content": "## Logs da Aplicação não disponíveis ainda\n\nOs logs do pod `weather-api` não chegam ao Loki porque o OTel auto-instrumentation Python não exporta logs via OTLP sem modificações no código.\n\n**Para habilitar logs sem tocar na aplicação**, a solução é instalar o **Promtail como DaemonSet** no cluster Kubernetes. Ele coleta automaticamente os logs do `stdout` de todos os pods e envia ao Loki.\n\n### Como acessar os logs agora:\n1. Vá em **Explore** no menu lateral\n2. Selecione o datasource **Loki**\n3. Use a query `{job=~\".+\"}` para ver os logs disponíveis\n\n### Próximo passo:\nInstalar Promtail DaemonSet no cluster kind para coletar logs dos pods automaticamente."
-      }
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "{namespace=\"weather\", container=\"$container\"}",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total de Linhas de Log (última hora)",
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "x": 0, "y": 20, "w": 8, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "sum(count_over_time({namespace=\"weather\", container=\"weather-api\"}[1h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Volume de Logs por Minuto",
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "x": 8, "y": 20, "w": 16, "h": 4 },
+      "options": {
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "sum(rate({namespace=\"weather\", container=\"weather-api\"}[1m]))",
+          "legendFormat": "logs/s",
+          "refId": "A"
+        }
+      ]
     }
-  ],
-  "templating": { "list": [] }
+  ]
 }
