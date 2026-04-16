@@ -5,9 +5,15 @@ import psycopg2
 import psycopg2.extras
 import os
 import logging
+from pythonjsonlogger import jsonlogger
 
 # ── Logging ────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(jsonlogger.JsonFormatter(
+    fmt="%(asctime)s %(name)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+))
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
