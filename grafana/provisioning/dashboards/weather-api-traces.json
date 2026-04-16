@@ -1,0 +1,166 @@
+{
+  "uid": "weather-api-traces",
+  "title": "Weather API — Traces",
+  "tags": ["weather-api", "otel", "traces"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "2xx (Sucesso)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "green", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "targets": [{
+        "expr": "sum(increase(otel_http_server_duration_milliseconds_count{exported_job=\"weather/weather-api\", http_status_code=~\"2..\"}[1h]))",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "4xx (Client Error)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "orange", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] }
+        }
+      },
+      "targets": [{
+        "expr": "sum(increase(otel_http_server_duration_milliseconds_count{exported_job=\"weather/weather-api\", http_status_code=~\"4..\"}[1h]))",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "5xx (Server Error)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "red", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] }
+        }
+      },
+      "targets": [{
+        "expr": "sum(increase(otel_http_server_duration_milliseconds_count{exported_job=\"weather/weather-api\", http_status_code=~\"5..\"}[1h]))",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latência p95 (última hora)",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 200 },
+            { "color": "red", "value": 500 }
+          ]}
+        }
+      },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{exported_job=\"weather/weather-api\"}[1h])))",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Traces — Sucesso (2xx)",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Traces 2xx",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 10 },
+      "options": { "frameIndex": 0, "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Trace ID" },
+            "properties": [{ "id": "custom.width", "value": 300 }, {
+              "id": "links", "value": [{ "title": "Abrir no Jaeger", "url": "http://localhost:16686/trace/${__value.raw}", "targetBlank": true }]
+            }]
+          },
+          { "matcher": { "id": "byName", "options": "Duration" }, "properties": [{ "id": "unit", "value": "µs" }, { "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "Start time" }, "properties": [{ "id": "custom.width", "value": 180 }] },
+          { "matcher": { "id": "byName", "options": "Trace name" }, "properties": [{ "id": "custom.width", "value": 220 }] }
+        ]
+      },
+      "targets": [{
+        "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" },
+        "queryType": "search",
+        "service": "weather-api",
+        "tags": "http.status_code=200",
+        "limit": 10,
+        "refId": "A"
+      }],
+      "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" }
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Traces — Erros (4xx / 5xx)",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Traces 4xx / 5xx",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 10 },
+      "options": { "frameIndex": 0, "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Trace ID" },
+            "properties": [{ "id": "custom.width", "value": 300 }, {
+              "id": "links", "value": [{ "title": "Abrir no Jaeger", "url": "http://localhost:16686/trace/${__value.raw}", "targetBlank": true }]
+            }]
+          },
+          { "matcher": { "id": "byName", "options": "Duration" }, "properties": [{ "id": "unit", "value": "µs" }, { "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "Start time" }, "properties": [{ "id": "custom.width", "value": 180 }] },
+          { "matcher": { "id": "byName", "options": "Trace name" }, "properties": [{ "id": "custom.width", "value": 220 }] }
+        ]
+      },
+      "targets": [{
+        "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" },
+        "queryType": "search",
+        "service": "weather-api",
+        "tags": "error=true",
+        "limit": 10,
+        "refId": "A"
+      }],
+      "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" }
+    }
+  ],
+  "templating": { "list": [] }
+}

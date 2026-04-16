@@ -34,12 +34,12 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(otel_http_server_duration_milliseconds_count{job=\"weather/weather-api\"}[5m]))",
+          "expr": "sum(rate(otel_http_server_duration_milliseconds_count{exported_job=\"weather/weather-api\"}[5m]))",
           "legendFormat": "req/s",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     },
     {
       "id": 2,
@@ -67,12 +67,12 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{job=\"weather/weather-api\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{exported_job=\"weather/weather-api\"}[5m])))",
           "legendFormat": "p95",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     },
     {
       "id": 3,
@@ -100,12 +100,12 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(otel_http_server_duration_milliseconds_count{job=\"weather/weather-api\", http_status_code=~\"4..|5..\"}[5m])) / sum(rate(otel_http_server_duration_milliseconds_count{job=\"weather/weather-api\"}[5m]))",
+          "expr": "sum(rate(otel_http_server_duration_milliseconds_count{exported_job=\"weather/weather-api\", http_status_code=~\"4..|5..\"}[5m])) / sum(rate(otel_http_server_duration_milliseconds_count{exported_job=\"weather/weather-api\"}[5m]))",
           "legendFormat": "error rate",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     },
     {
       "id": 4,
@@ -133,12 +133,12 @@
       },
       "targets": [
         {
-          "expr": "sum(otel_http_server_active_requests{job=\"weather/weather-api\"})",
+          "expr": "sum(otel_http_server_active_requests{exported_job=\"weather/weather-api\"})",
           "legendFormat": "active",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     },
     {
       "id": 5,
@@ -154,12 +154,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (http_target, http_status_code) (rate(otel_http_server_duration_milliseconds_count{job=\"weather/weather-api\"}[5m]))",
+          "expr": "sum by (http_target, http_status_code) (rate(otel_http_server_duration_milliseconds_count{exported_job=\"weather/weather-api\"}[5m]))",
           "legendFormat": "{{http_target}} {{http_status_code}}",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     },
     {
       "id": 6,
@@ -175,22 +175,22 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{job=\"weather/weather-api\"}[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{exported_job=\"weather/weather-api\"}[5m])))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{job=\"weather/weather-api\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{exported_job=\"weather/weather-api\"}[5m])))",
           "legendFormat": "p95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{job=\"weather/weather-api\"}[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{exported_job=\"weather/weather-api\"}[5m])))",
           "legendFormat": "p99",
           "refId": "C"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     },
     {
       "id": 7,
@@ -210,12 +210,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (http_status_code, http_target) (rate(otel_http_server_duration_milliseconds_count{job=\"weather/weather-api\", http_status_code=~\"4..|5..\"}[5m]))",
+          "expr": "sum by (http_status_code, http_target) (rate(otel_http_server_duration_milliseconds_count{exported_job=\"weather/weather-api\", http_status_code=~\"4..|5..\"}[5m]))",
           "legendFormat": "{{http_status_code}} {{http_target}}",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     },
     {
       "id": 8,
@@ -231,22 +231,13 @@
       },
       "targets": [
         {
-          "expr": "rate(otel_cpython_gc_collected_objects_total{job=\"weather/weather-api\"}[5m])",
+          "expr": "rate(otel_cpython_gc_collected_objects_total{exported_job=\"weather/weather-api\"}[5m])",
           "legendFormat": "gen {{generation}}",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     }
   ],
-  "templating": {
-    "list": [
-      {
-        "name": "DS_PROMETHEUS",
-        "type": "datasource",
-        "pluginId": "prometheus",
-        "hide": 2
-      }
-    ]
-  }
+  "templating": { "list": [] }
 }

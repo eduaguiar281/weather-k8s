@@ -65,7 +65,9 @@ services:
     ports:
       - "3100:3100"
     networks:
-      - observability
+      observability:
+      kind_bridge:
+        ipv4_address: 172.23.0.51
     restart: unless-stopped
 
   # ────────────────────────────────────────────

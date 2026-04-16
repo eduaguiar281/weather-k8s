@@ -33,6 +33,7 @@ def get_connection():
 @app.get("/hello")
 def hello():
     """Retorna uma saudação simples."""
+    logger.info("GET /hello called")
     return {"message": "hello world!"}
 
 
@@ -47,9 +48,11 @@ def get_weather(
     - Retorna 400 para entradas inválidas.
     - Retorna 404 se nenhum registro for encontrado.
     """
+    logger.info("GET /weather called", extra={"city": city, "date": date})
 
     # Validação: tamanho da cidade
     if len(city) > 50:
+        logger.warning("City name too long", extra={"city": city, "length": len(city)})
         raise HTTPException(
             status_code=400,
             detail="O nome da cidade não pode ter mais de 50 caracteres.",
@@ -62,6 +65,7 @@ def get_weather(
             from datetime import datetime
             parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
         except ValueError:
+            logger.warning("Invalid date format", extra={"date": date})
             raise HTTPException(
                 status_code=400,
                 detail=f"Data inválida: '{date}'. Use o formato YYYY-MM-DD.",
@@ -88,7 +92,7 @@ def get_weather(
         conn.close()
 
     except Exception as e:
-        logger.error(f"Erro ao consultar o banco de dados: {e}")
+        logger.error(f"Erro ao consultar o banco de dados: {e}", extra={"city": city})
         raise HTTPException(status_code=500, detail="Erro interno ao acessar o banco de dados.")
 
     # Retorno 404 se não encontrar
@@ -96,7 +100,10 @@ def get_weather(
         detail = f"Nenhum registro encontrado para a cidade '{city}'"
         if parsed_date:
             detail += f" na data {parsed_date}."
+        logger.warning("No records found", extra={"city": city, "date": str(parsed_date)})
         raise HTTPException(status_code=404, detail=detail)
+
+    logger.info("Weather records returned", extra={"city": city, "count": len(rows)})
 
     # Serializa date para string
     results = [

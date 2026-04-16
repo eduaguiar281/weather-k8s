@@ -1,0 +1,22 @@
+{
+  "uid": "weather-api-logs",
+  "title": "Weather API — Logs",
+  "tags": ["weather-api", "otel", "logs"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Logs da Aplicação — Configuração Necessária",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 6 },
+      "options": {
+        "mode": "markdown",
+        "content": "## Logs da Aplicação não disponíveis ainda\n\nOs logs do pod `weather-api` não chegam ao Loki porque o OTel auto-instrumentation Python não exporta logs via OTLP sem modificações no código.\n\n**Para habilitar logs sem tocar na aplicação**, a solução é instalar o **Promtail como DaemonSet** no cluster Kubernetes. Ele coleta automaticamente os logs do `stdout` de todos os pods e envia ao Loki.\n\n### Como acessar os logs agora:\n1. Vá em **Explore** no menu lateral\n2. Selecione o datasource **Loki**\n3. Use a query `{job=~\".+\"}` para ver os logs disponíveis\n\n### Próximo passo:\nInstalar Promtail DaemonSet no cluster kind para coletar logs dos pods automaticamente."
+      }
+    }
+  ],
+  "templating": { "list": [] }
+}
