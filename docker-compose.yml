@@ -105,7 +105,9 @@ services:
       - prometheus
       - loki
     networks:
-      - observability
+      observability:
+      kind_bridge:
+        ipv4_address: 172.23.0.50
     restart: unless-stopped
 
   # ────────────────────────────────────────────
@@ -205,3 +207,6 @@ volumes:
 networks:
   observability:
     driver: bridge
+  kind_bridge:
+    external: true
+    name: observability_observability
