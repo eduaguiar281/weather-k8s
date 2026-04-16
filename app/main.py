@@ -2,7 +2,6 @@ from fastapi import FastAPI, Query, HTTPException
 from typing import Optional
 from datetime import date
 import psycopg2
-import psycopg2.extras
 import os
 import logging
 from pythonjsonlogger import jsonlogger
@@ -80,7 +79,7 @@ def get_weather(
     # Consulta ao banco
     try:
         conn = get_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur = conn.cursor()
 
         if parsed_date:
             cur.execute(
@@ -93,7 +92,8 @@ def get_weather(
                 (city,),
             )
 
-        rows = cur.fetchall()
+        col_names = [desc[0] for desc in cur.description] if cur.description else []
+        rows = [dict(zip(col_names, row)) for row in cur.fetchall()]
         cur.close()
         conn.close()
 
