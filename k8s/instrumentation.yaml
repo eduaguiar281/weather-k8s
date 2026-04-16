@@ -5,7 +5,7 @@ metadata:
   namespace: weather
 spec:
   exporter:
-    endpoint: http://172.23.0.12:4318
+    endpoint: http://172.23.0.3:4318
   propagators:
     - tracecontext
     - baggage
