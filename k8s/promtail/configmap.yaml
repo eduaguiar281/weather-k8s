@@ -19,28 +19,21 @@ data:
       - job_name: kubernetes-pods
         pipeline_stages:
           - cri: {}
-        kubernetes_sd_configs:
-          - role: pod
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_node_name]
-            target_label: __host__
-          - source_labels: [__meta_kubernetes_namespace]
-            target_label: namespace
-          - source_labels: [__meta_kubernetes_pod_name]
-            target_label: pod
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            target_label: container
-          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_label_app]
-            separator: /
-            target_label: job
-          - source_labels:
-              - __meta_kubernetes_pod_uid
-              - __meta_kubernetes_pod_container_name
-            action: replace
-            separator: "/"
-            regex: "([^/]+)/([^/]+)"
-            replacement: "/var/log/pods/*$1/$2/*.log"
-            target_label: __path__
-          - action: drop
-            regex: ""
-            source_labels: [__path__]
+          - regex:
+              expression: '/var/log/pods/(?P<namespace>[^_]+)_(?P<pod>[^_]+)_[^/]+/(?P<container>[^/]+)/.*'
+              source: filename
+          - labels:
+              namespace:
+              pod:
+              container:
+          - template:
+              source: namespace
+              template: '{{ if eq .Value "weather" }}weather/weather-api{{ else }}{{ .Value }}{{ end }}'
+              target: job
+          - labels:
+              job:
+        static_configs:
+          - targets:
+              - localhost
+            labels:
+              __path__: /var/log/pods/*/*/*.log
