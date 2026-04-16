@@ -40,4 +40,4 @@ datasources:
         filterByTraceID: false
         filterBySpanID: false
         customQuery: true
-        query: '{namespace="weather", container="weather-api"} | json | trace_id=~"${__trace.traceId}"'
+        query: '{namespace="weather", container="weather-api", log_source="app"} |= "trace_id=${__trace.traceId}"'
