@@ -13,19 +13,31 @@ datasources:
 
   - name: Loki
     type: loki
+    uid: P8E80F9AEF21F6940
     access: proxy
     url: http://loki:3100
     jsonData:
       maxLines: 1000
+      # Derived fields: extrai trace_id do corpo do log e cria link para Jaeger
+      derivedFields:
+        - name: TraceID
+          datasourceUid: PC9A941E8F2E49454
+          matcherRegex: 'trace_id=([a-f0-9]{32})'
+          url: '${__value.raw}'
+          urlDisplayLabel: 'Abrir no Jaeger'
 
   - name: Jaeger
     type: jaeger
+    uid: PC9A941E8F2E49454
     access: proxy
     url: http://jaeger:16686
     jsonData:
+      # Trace → Logs: ao visualizar um trace no Jaeger, busca logs relacionados no Loki
       tracesToLogsV2:
-        datasourceUid: loki
-        spanStartTimeShift: '-1h'
-        spanEndTimeShift: '1h'
-        filterByTraceID: true
+        datasourceUid: P8E80F9AEF21F6940
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        filterByTraceID: false
         filterBySpanID: false
+        customQuery: true
+        query: '{namespace="weather", container="weather-api"} | json | trace_id=~"${__trace.traceId}"'
