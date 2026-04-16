@@ -17,17 +17,13 @@ data:
 
     scrape_configs:
       - job_name: kubernetes-pods
-        kubernetes_sd_configs:
-          - role: pod
         pipeline_stages:
           - cri: {}
-          - labeldrop:
-              - filename
+        kubernetes_sd_configs:
+          - role: pod
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_node_name]
             target_label: __host__
-          - action: labelmap
-            regex: __meta_kubernetes_pod_label_(.+)
           - source_labels: [__meta_kubernetes_namespace]
             target_label: namespace
           - source_labels: [__meta_kubernetes_pod_name]
@@ -37,7 +33,14 @@ data:
           - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_label_app]
             separator: /
             target_label: job
-          - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
-            separator: /
+          - source_labels:
+              - __meta_kubernetes_pod_uid
+              - __meta_kubernetes_pod_container_name
+            action: replace
+            separator: "/"
+            regex: "([^/]+)/([^/]+)"
+            replacement: "/var/log/pods/*$1/$2/*.log"
             target_label: __path__
-            replacement: /var/log/pods/*$1/*.log
+          - action: drop
+            regex: ""
+            source_labels: [__path__]
