@@ -35,9 +35,13 @@ data:
               target: job
           - labels:
               job:
-          - drop:
-              expression: 'otel-auto-instrumentation-python|opentelemetry\.(sdk|exporter|instrumentation)'
-              drop_counter_reason: otel_sdk_internal_noise
+          - regex:
+              expression: '(?P<otel_sdk_log>otel-auto-instrumentation-python|opentelemetry\.(sdk|exporter|instrumentation))'
+          - template:
+              source: log_source
+              template: '{{ if .otel_sdk_log }}otel_sdk{{ else }}app{{ end }}'
+          - labels:
+              log_source:
         static_configs:
           - targets:
               - localhost

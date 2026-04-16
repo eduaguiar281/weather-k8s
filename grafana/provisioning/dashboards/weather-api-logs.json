@@ -9,13 +9,14 @@
   "templating": {
     "list": [
       {
-        "name": "container",
+        "name": "log_source",
         "type": "custom",
-        "label": "Container",
-        "current": { "value": "weather-api", "text": "weather-api" },
+        "label": "Fonte",
+        "current": { "value": "app", "text": "Aplicação" },
         "options": [
-          { "value": "weather-api", "text": "weather-api", "selected": true },
-          { "value": "opentelemetry-auto-instrumentation-python", "text": "otel-init", "selected": false }
+          { "value": "app", "text": "Aplicação", "selected": true },
+          { "value": "otel_sdk", "text": "OTel SDK", "selected": false },
+          { "value": ".*", "text": "Todos", "selected": false }
         ]
       }
     ]
@@ -24,7 +25,7 @@
     {
       "id": 1,
       "type": "logs",
-      "title": "Logs — weather-api",
+      "title": "Logs — weather-api  (fonte: $log_source)",
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 20 },
       "options": {
@@ -40,7 +41,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-          "expr": "{namespace=\"weather\", container=\"$container\"}",
+          "expr": "{namespace=\"weather\", container=\"weather-api\", log_source=~\"$log_source\"}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -49,7 +50,7 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Total de Linhas de Log (última hora)",
+      "title": "Logs da Aplicação (última hora)",
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "gridPos": { "x": 0, "y": 20, "w": 8, "h": 4 },
       "options": {
@@ -62,19 +63,40 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-          "expr": "sum(count_over_time({namespace=\"weather\", container=\"weather-api\"}[1h]))",
+          "expr": "sum(count_over_time({namespace=\"weather\", container=\"weather-api\", log_source=\"app\"}[1h]))",
           "refId": "A"
         }
       ]
     },
     {
       "id": 3,
-      "type": "timeseries",
-      "title": "Volume de Logs por Minuto",
+      "type": "stat",
+      "title": "Erros OTel SDK (última hora)",
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-      "gridPos": { "x": 8, "y": 20, "w": 16, "h": 4 },
+      "gridPos": { "x": 8, "y": 20, "w": 8, "h": 4 },
       "options": {
-        "tooltip": { "mode": "single" },
+        "reduceOptions": { "calcs": ["sum"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "fixed",
+        "fixedColor": "orange"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "sum(count_over_time({namespace=\"weather\", container=\"weather-api\", log_source=\"otel_sdk\"}[1h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Volume por Fonte (logs/min)",
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "x": 16, "y": 20, "w": 8, "h": 4 },
+      "options": {
+        "tooltip": { "mode": "multi" },
         "legend": { "displayMode": "list", "placement": "bottom" }
       },
       "fieldConfig": {
@@ -83,8 +105,8 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-          "expr": "sum(rate({namespace=\"weather\", container=\"weather-api\"}[1m]))",
-          "legendFormat": "logs/s",
+          "expr": "sum by (log_source) (rate({namespace=\"weather\", container=\"weather-api\"}[1m]))",
+          "legendFormat": "{{log_source}}",
           "refId": "A"
         }
       ]
