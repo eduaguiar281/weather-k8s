@@ -12,6 +12,8 @@ spec:
     metadata:
       labels:
         app: weather-api
+      annotations:
+        instrumentation.opentelemetry.io/inject-python: "true"
     spec:
       containers:
         - name: weather-api
