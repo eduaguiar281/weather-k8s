@@ -24,8 +24,15 @@ data:
           - cri: {}
 
         relabel_configs:
+          # Só processa pods rodando neste nó
           - source_labels: [__meta_kubernetes_pod_node_name]
-            target_label: __host__
+            action: keep
+            regex: ${NODE_NAME}
+
+          # Descarta pods sem nome de container (pods terminando)
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: drop
+            regex: ''
 
           - source_labels: [__meta_kubernetes_namespace]
             target_label: namespace
@@ -46,6 +53,7 @@ data:
             separator: /
             target_label: job
 
+          # Monta o caminho do arquivo de log no host
           - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
             separator: /
             regex: (.+)/(.+)
