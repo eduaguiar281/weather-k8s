@@ -1,13 +1,18 @@
 #!/bin/bash
 # Deploy da aplicação no ambiente de desenvolvimento (namespace: weather-dev)
 # Pré-requisitos: kind cluster rodando, docker-compose up -d, setup-kind-network.sh executado
+#
+# Fluxo:
+#   1. Build da imagem Docker
+#   2. Carrega imagem no kind (necessário pois imagePullPolicy: Never)
+#   3. ArgoCD detecta o novo deployment e sincroniza automaticamente
 
 set -e
 
-OVERLAY="k8s/overlays/dev"
 NAMESPACE="weather-dev"
 IMAGE_NAME="weather-api:local"
-KIND_NODE="local-control-plane"
+ARGOCD_APP="weather-api-dev"
+ARGOCD_INFRA_APP="weather-infra"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -18,11 +23,12 @@ docker build -t "$IMAGE_NAME" "$ROOT_DIR/app"
 echo "==> [DEV] Carregando imagem no kind..."
 kind load docker-image "$IMAGE_NAME" --name local
 
-echo "==> [INFRA] Aplicando infraestrutura compartilhada (Promtail)..."
-kubectl apply -k "$ROOT_DIR/k8s/infra"
+echo "==> [INFRA] Garantindo Applications do ArgoCD..."
+kubectl apply -f "$ROOT_DIR/k8s/argocd/weather-infra.yaml"
+kubectl apply -f "$ROOT_DIR/k8s/argocd/weather-api-dev.yaml"
 
-echo "==> [DEV] Aplicando manifests (namespace: $NAMESPACE)..."
-kubectl apply -k "$ROOT_DIR/$OVERLAY"
+echo "==> [DEV] Forçando rollout para pegar nova imagem..."
+kubectl rollout restart deployment/weather-api -n "$NAMESPACE"
 
 echo "==> [DEV] Aguardando rollout..."
 kubectl rollout status deployment/weather-api -n "$NAMESPACE" --timeout=120s
