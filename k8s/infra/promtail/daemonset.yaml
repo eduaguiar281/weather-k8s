@@ -22,6 +22,7 @@ spec:
           image: grafana/promtail:2.9.7
           args:
             - -config.file=/etc/promtail/promtail.yaml
+            - -config.expand-env=true
           env:
             - name: NODE_NAME
               valueFrom:
