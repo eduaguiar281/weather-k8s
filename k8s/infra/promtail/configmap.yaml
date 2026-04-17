@@ -24,11 +24,6 @@ data:
           - cri: {}
 
         relabel_configs:
-          # Só processa pods rodando neste nó
-          - source_labels: [__meta_kubernetes_pod_node_name]
-            action: keep
-            regex: ${NODE_NAME}
-
           # Descarta pods sem nome de container (pods terminando)
           - source_labels: [__meta_kubernetes_pod_container_name]
             action: drop
