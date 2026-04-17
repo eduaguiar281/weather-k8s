@@ -1,0 +1,552 @@
+{
+  "uid": "weather-observability",
+  "title": "Weather — Observabilidade",
+  "tags": ["weather", "otel", "unified"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "10s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "application",
+        "type": "query",
+        "label": "Aplicação",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(otel_http_server_duration_milliseconds_count, service_name)",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": { "selected": false, "text": "weather.api", "value": "weather.api" },
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "environment",
+        "type": "query",
+        "label": "Ambiente",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(otel_http_server_duration_milliseconds_count{service_name=\"$application\"}, deployment_environment)",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": { "selected": false, "text": "dev", "value": "dev" },
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "log_source",
+        "type": "custom",
+        "label": "Fonte de log",
+        "current": { "value": "app", "text": "Aplicação" },
+        "options": [
+          { "value": "app", "text": "Aplicação", "selected": true },
+          { "value": "otel_sdk", "text": "OTel SDK", "selected": false },
+          { "value": ".*", "text": "Todos", "selected": false }
+        ],
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Métricas (Prometheus)",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Request Rate (req/s)",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(otel_http_server_duration_milliseconds_count{service_name=\"$application\",deployment_environment=\"$environment\"}[5m]))",
+          "legendFormat": "req/s",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Latência p95",
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 200 },
+              { "color": "red", "value": 500 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{service_name=\"$application\",deployment_environment=\"$environment\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Taxa de Erro (4xx/5xx)",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(otel_http_server_duration_milliseconds_count{service_name=\"$application\",deployment_environment=\"$environment\", http_status_code=~\"4..|5..\"}[5m])) / sum(rate(otel_http_server_duration_milliseconds_count{service_name=\"$application\",deployment_environment=\"$environment\"}[5m]))",
+          "legendFormat": "error rate",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Requisições Ativas",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(otel_http_server_active_requests{service_name=\"$application\",deployment_environment=\"$environment\"})",
+          "legendFormat": "active",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Request Rate por Endpoint",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } }
+      },
+      "targets": [
+        {
+          "expr": "sum by (http_target, http_status_code) (rate(otel_http_server_duration_milliseconds_count{service_name=\"$application\",deployment_environment=\"$environment\"}[5m]))",
+          "legendFormat": "{{http_target}} {{http_status_code}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Latência por Percentil (p50 / p95 / p99)",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "lineWidth": 2 } }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{service_name=\"$application\",deployment_environment=\"$environment\"}[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{service_name=\"$application\",deployment_environment=\"$environment\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{service_name=\"$application\",deployment_environment=\"$environment\"}[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Erros HTTP (4xx / 5xx)",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2 },
+          "color": { "fixedColor": "red", "mode": "fixed" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (http_status_code, http_target) (rate(otel_http_server_duration_milliseconds_count{service_name=\"$application\",deployment_environment=\"$environment\", http_status_code=~\"4..|5..\"}[5m]))",
+          "legendFormat": "{{http_status_code}} {{http_target}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "GC Python — Objetos Coletados",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } }
+      },
+      "targets": [
+        {
+          "expr": "rate(otel_cpython_gc_collected_objects_total{service_name=\"$application\",deployment_environment=\"$environment\"}[5m])",
+          "legendFormat": "gen {{generation}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Traces (Jaeger + métricas)",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "2xx (Sucesso)",
+      "gridPos": { "x": 0, "y": 22, "w": 6, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "green", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "targets": [{
+        "expr": "sum(increase(otel_http_server_duration_milliseconds_count{service_name=\"$application\",deployment_environment=\"$environment\", http_status_code=~\"2..\"}[1h]))",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "4xx (Client Error)",
+      "gridPos": { "x": 6, "y": 22, "w": 6, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "orange", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] }
+        }
+      },
+      "targets": [{
+        "expr": "sum(increase(otel_http_server_duration_milliseconds_count{service_name=\"$application\",deployment_environment=\"$environment\", http_status_code=~\"4..\"}[1h]))",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "5xx (Server Error)",
+      "gridPos": { "x": 12, "y": 22, "w": 6, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "red", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] }
+        }
+      },
+      "targets": [{
+        "expr": "sum(increase(otel_http_server_duration_milliseconds_count{service_name=\"$application\",deployment_environment=\"$environment\", http_status_code=~\"5..\"}[1h]))",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Latência p95 (1h)",
+      "gridPos": { "x": 18, "y": 22, "w": 6, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 200 },
+            { "color": "red", "value": 500 }
+          ]}
+        }
+      },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le) (rate(otel_http_server_duration_milliseconds_bucket{service_name=\"$application\",deployment_environment=\"$environment\"}[1h])))",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "Traces — Sucesso (2xx)",
+      "gridPos": { "x": 0, "y": 26, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Traces 2xx",
+      "gridPos": { "x": 0, "y": 27, "w": 24, "h": 10 },
+      "options": { "frameIndex": 0, "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Trace ID" },
+            "properties": [{ "id": "custom.width", "value": 300 }, {
+              "id": "links", "value": [{ "title": "Abrir no Jaeger", "url": "http://localhost:16686/trace/${__value.raw}", "targetBlank": true }]
+            }]
+          },
+          { "matcher": { "id": "byName", "options": "Duration" }, "properties": [{ "id": "unit", "value": "µs" }, { "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "Start time" }, "properties": [{ "id": "custom.width", "value": 180 }] },
+          { "matcher": { "id": "byName", "options": "Trace name" }, "properties": [{ "id": "custom.width", "value": 220 }] }
+        ]
+      },
+      "targets": [{
+        "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" },
+        "queryType": "search",
+        "service": "weather-api",
+        "tags": "{\"http.status_code\":\"200\"}",
+        "limit": 10,
+        "refId": "A"
+      }],
+      "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" }
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Traces — HTTP 400 (exemplos de 4xx)",
+      "gridPos": { "x": 0, "y": 37, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Traces HTTP 400",
+      "gridPos": { "x": 0, "y": 38, "w": 24, "h": 10 },
+      "options": { "frameIndex": 0, "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Trace ID" },
+            "properties": [{ "id": "custom.width", "value": 300 }, {
+              "id": "links", "value": [{ "title": "Abrir no Jaeger", "url": "http://localhost:16686/trace/${__value.raw}", "targetBlank": true }]
+            }]
+          },
+          { "matcher": { "id": "byName", "options": "Duration" }, "properties": [{ "id": "unit", "value": "µs" }, { "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "Start time" }, "properties": [{ "id": "custom.width", "value": 180 }] },
+          { "matcher": { "id": "byName", "options": "Trace name" }, "properties": [{ "id": "custom.width", "value": 220 }] }
+        ]
+      },
+      "targets": [{
+        "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" },
+        "queryType": "search",
+        "service": "weather-api",
+        "tags": "{\"http.status_code\":\"400\"}",
+        "limit": 10,
+        "refId": "A"
+      }],
+      "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Logs (Loki)",
+      "gridPos": { "x": 0, "y": 48, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 20,
+      "type": "logs",
+      "title": "Logs ($application · $environment · $log_source)",
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "x": 0, "y": 49, "w": 24, "h": 16 },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "{service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\", log_source=~\"$log_source\"} or {service_name=\"$application\", deployment_environment=\"$environment\", exporter=\"OTLP\"} or {app_name=\"weather.api\", namespace=~\"weather.*\", container=\"weather-api\", log_source=~\"$log_source\", env=~\"^$environment\"}",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "Logs da app (1h)",
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "x": 0, "y": 65, "w": 8, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "sum(count_over_time({service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\", log_source=\"app\"}[1h])) + sum(count_over_time({app_name=\"weather.api\", namespace=~\"weather.*\", container=\"weather-api\", log_source=\"app\", env=~\"^$environment\"}[1h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "Logs OTel SDK (1h)",
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "x": 8, "y": 65, "w": 8, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "fixed",
+        "fixedColor": "orange"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "sum(count_over_time({service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\", log_source=\"otel_sdk\"}[1h])) + sum(count_over_time({app_name=\"weather.api\", namespace=~\"weather.*\", container=\"weather-api\", log_source=\"otel_sdk\", env=~\"^$environment\"}[1h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Volume por fonte (logs/min)",
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "x": 16, "y": 65, "w": 8, "h": 4 },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "sum by (log_source) (rate({service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\"}[1m])) + sum by (log_source) (rate({app_name=\"weather.api\", namespace=~\"weather.*\", container=\"weather-api\", env=~\"^$environment\"}[1m]))",
+          "legendFormat": "{{log_source}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

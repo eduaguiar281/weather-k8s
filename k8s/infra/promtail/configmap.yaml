@@ -44,16 +44,15 @@ data:
           - labels:
               job:
 
-          # Deriva env a partir do namespace
+          # Deriva env a partir do namespace (uma linha — evita newline no valor do label)
           - template:
               source: env
-              template: |
-                {{ if eq .namespace "weather-dev" }}dev{{ else if eq .namespace "weather" }}prod{{ else }}{{ end }}
+              template: '{{ if eq .namespace "weather-dev" }}dev{{ else if eq .namespace "weather" }}prod{{ else }}{{ end }}'
 
           - labels:
               env:
 
-          # Define app_name para pods do weather
+          # Alinha labels com resource OTel (Loki/Queries) — mesmo valor em dev e prod
           - match:
               selector: '{namespace=~"weather.*"}'
               stages:
@@ -62,3 +61,13 @@ data:
                     template: weather.api
                 - labels:
                     app_name:
+                - template:
+                    source: service_name
+                    template: weather.api
+                - labels:
+                    service_name:
+                - template:
+                    source: deployment_environment
+                    template: '{{ if eq .namespace "weather-dev" }}dev{{ else if eq .namespace "weather" }}prod{{ else }}{{ end }}'
+                - labels:
+                    deployment_environment:

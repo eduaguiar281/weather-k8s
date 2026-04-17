@@ -23,6 +23,14 @@ processors:
     limit_mib: 512
     spike_limit_mib: 128
 
+  # Indica ao exporter Loki quais atributos de resource viram labels indexadas
+  # (deployment.environment → deployment_environment no Loki)
+  resource/loki_labels:
+    attributes:
+      - action: insert
+        key: loki.resource.labels
+        value: service.name, deployment.environment, application.name
+
 
 exporters:
   # Traces → Jaeger
@@ -64,5 +72,5 @@ service:
 
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource/loki_labels, batch]
       exporters: [loki, debug]
