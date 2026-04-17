@@ -12,6 +12,8 @@ spec:
     metadata:
       labels:
         app: weather-api
+        app_name: weather.api
+        env: base
       annotations:
         instrumentation.opentelemetry.io/inject-python: "true"
     spec:
@@ -47,3 +49,13 @@ spec:
                 secretKeyRef:
                   name: weather-secret
                   key: DB_PASSWORD
+            - name: APP_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: weather-secret
+                  key: APP_NAME
+            - name: ENV
+              valueFrom:
+                secretKeyRef:
+                  name: weather-secret
+                  key: ENV

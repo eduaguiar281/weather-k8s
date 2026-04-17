@@ -16,4 +16,4 @@ spec:
       - name: OTEL_PYTHON_LOG_CORRELATION
         value: "true"
       - name: OTEL_SERVICE_NAME
-        value: weather-api
+        value: weather.api

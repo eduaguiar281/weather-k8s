@@ -136,7 +136,8 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./db/init-dev-db.sh:/docker-entrypoint-initdb.d/02-init-dev-db.sh
     ports:
       - "5432:5432"
     networks:

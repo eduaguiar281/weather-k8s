@@ -35,6 +35,8 @@ exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
     namespace: otel
+    resource_to_telemetry_conversion:
+      enabled: true
 
   # Logs → Loki
   loki:

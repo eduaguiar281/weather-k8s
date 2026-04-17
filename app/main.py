@@ -15,6 +15,9 @@ handler.setFormatter(jsonlogger.JsonFormatter(
 logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 
+APP_NAME = os.getenv("APP_NAME", "weather.api")
+ENV = os.getenv("ENV", "dev")
+
 app = FastAPI(
     title="Weather API",
     description="API para consulta de dados climáticos por cidade e data.",
@@ -34,6 +37,12 @@ def get_connection():
 
 
 # ── Endpoints ───────────────────────────────────────────────
+
+@app.get("/live")
+def live():
+    """Retorna o status de vida da aplicação com identificação de ambiente."""
+    return {"Status": "alive", "Application_Name": APP_NAME, "Environment": ENV}
+
 
 @app.get("/hello")
 def hello():
