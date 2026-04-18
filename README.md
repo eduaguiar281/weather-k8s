@@ -83,6 +83,14 @@ Verificar: pods do `argocd` em `Running` (pode levar alguns minutos na primeira 
 
 ### 5. Registrar os Applications no cluster
 
+Se estiver a usar **SSH** com o GitHub (e `repoURL` em `git@github.com:...` nos YAML), **antes** crie o Secret no cluster:
+
+```bash
+./scripts/apply-argocd-ssh-secret.sh
+```
+
+Depois aplique os Applications:
+
 ```bash
 kubectl apply -f k8s/argocd/weather-infra.yaml
 kubectl apply -f k8s/argocd/weather-api-dev.yaml
@@ -96,7 +104,7 @@ Verificar até **Sync Status = Synced** (e sem `ComparisonError`):
 kubectl get application -n argocd
 ```
 
-Se aparecer erro de Git/SSH, confira se o `repoURL` nos YAML está em **HTTPS** e se o push para o GitHub foi feito.
+Se aparecer erro de Git: com **HTTPS** e repo público, confira **push** para o GitHub; com **SSH**, confira o Secret (`./scripts/apply-argocd-ssh-secret.sh`) e o `repoURL` igual ao do Secret.
 
 ### 6. Deploy da imagem local (dev)
 
@@ -235,13 +243,12 @@ Seu `~/.ssh` no Mac/WSL **não** é usado pelos pods do Argo CD. É preciso uma 
 2. **Registrar a chave pública no GitHub** (o repo `weather-k8s`):
    - GitHub → repositório → **Settings** → **Deploy keys** → **Add deploy key** → cole o conteúdo de `~/.ssh/argocd-weather-k8s.pub` → marque **Allow write access** só se precisar que o Argo escreva no repo (no fluxo comum, **não** é necessário).
    - Alternativa: adicionar a mesma pubkey em **SSH keys** da sua conta GitHub (vale para todos os repos da conta).
-3. **Criar o Secret no namespace `argocd`** a partir do exemplo (troque `eduaguiar281` no URL se for outro usuário/org):
+3. **Criar o Secret no namespace `argocd`** a partir da **chave privada no disco** (evita colar `-----BEGIN...` num YAML — o `---` quebra o parser). Troque `eduaguiar281` na variável só se o repo for outro:
    ```bash
-   cp k8s/argocd/repo-github-ssh.secret.yaml.example k8s/argocd/repo-github-ssh.secret.yaml
-   # Edite repo-github-ssh.secret.yaml e cole a chave PRIVADA completa (incluindo BEGIN/END)
-   kubectl apply -f k8s/argocd/repo-github-ssh.secret.yaml
+   chmod +x scripts/apply-argocd-ssh-secret.sh   # uma vez
+   ./scripts/apply-argocd-ssh-secret.sh
    ```
-   O ficheiro `repo-github-ssh.secret.yaml` está no `.gitignore` para não subir chave por engano.
+   Por omissão usa `~/.ssh/argocd-weather-k8s` e `git@github.com:eduaguiar281/weather-k8s.git`. Outra chave ou URL: `ARGOCD_SSH_KEY=... ARGOCD_REPO_URL=... ./scripts/apply-argocd-ssh-secret.sh`.
 4. **`spec.source.repoURL` nos Applications (alinhado ao Secret)**  
    Cada recurso `Application` do Argo CD diz **de onde** buscar o Git: é o campo `spec.source.repoURL`. O Argo compara esse texto com o `url` do Secret: têm de ser **a mesma forma de endereço** (SSH) que você pôs no Secret (`git@github.com:usuario/repo.git`).  
    - Se `repoURL` for `https://github.com/...`, o Argo trata como **outro repositório** e **não** aplica automaticamente a credencial SSH que registou para `git@github.com:...`.  
@@ -276,7 +283,7 @@ Seu `~/.ssh` no Mac/WSL **não** é usado pelos pods do Argo CD. É preciso uma 
    kubectl apply -f k8s/argocd/weather-api-dev.yaml
    kubectl get application -n argocd
    ```
-6. Se nada mudar, reinicie o repo-server: `kubectl rollout restart deployment/argocd-repo-server -n argocd`.
+6. O script do passo 3 já reinicia o `argocd-repo-server`. Se sincronizar à mão: `kubectl rollout restart deployment/argocd-repo-server -n argocd`.
 
 Referência: [Repositórios privados no Argo CD](https://argo-cd.readthedocs.io/en/stable/user-guide/private-repositories/).
 
@@ -297,6 +304,7 @@ Referência: [Repositórios privados no Argo CD](https://argo-cd.readthedocs.io/
 | `scripts/ensure-observability-network.sh` | Cria a rede Docker externa antes do `docker compose up` |
 | `scripts/bootstrap-kind-argocd.sh` | Bootstrap Kind + Argo CD |
 | `scripts/setup-kind-network.sh` | Ponte de rede Kind ↔ Docker Compose + port-forwards |
-| `k8s/argocd/repo-github-ssh.secret.yaml.example` | Modelo de Secret (SSH) para o GitHub — copie e preencha localmente |
+| `scripts/apply-argocd-ssh-secret.sh` | Cria o Secret SSH do GitHub no Argo CD a partir de `~/.ssh/argocd-weather-k8s` |
+| `k8s/argocd/repo-github-ssh.secret.yaml.example` | Referência manual de Secret (SSH) — prefira o script acima |
 | `k8s/` | Manifests base, overlays e apps Argo CD |
 | `app/` | API FastAPI (ver `app/README.md`) |
