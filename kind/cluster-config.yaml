@@ -1,0 +1,6 @@
+# Configuração do cluster Kind (nome do cluster via flag: kind create cluster --name local).
+# Mantém um único control-plane — suficiente para dev e compatível com macOS e Linux (incl. WSL2).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane

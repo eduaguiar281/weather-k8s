@@ -27,6 +27,19 @@ echo "==> [INFRA] Garantindo Applications do ArgoCD..."
 kubectl apply -f "$ROOT_DIR/k8s/argocd/weather-infra.yaml"
 kubectl apply -f "$ROOT_DIR/k8s/argocd/weather-api-dev.yaml"
 
+echo "==> [DEV] Aguardando Argo CD sincronizar e criar o deployment em ${NAMESPACE}..."
+attempts=0
+max_attempts=60
+while ! kubectl get deployment weather-api -n "$NAMESPACE" >/dev/null 2>&1; do
+  attempts=$((attempts + 1))
+  if [[ "$attempts" -ge "$max_attempts" ]]; then
+    echo "Erro: deployment weather-api não apareceu após ~$((max_attempts * 3))s." >&2
+    echo "Confira o app no Argo CD: kubectl get application weather-api-dev -n argocd -o yaml" >&2
+    exit 1
+  fi
+  sleep 3
+done
+
 echo "==> [DEV] Forçando rollout para pegar nova imagem..."
 kubectl rollout restart deployment/weather-api -n "$NAMESPACE"
 
