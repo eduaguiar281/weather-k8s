@@ -2,11 +2,12 @@
 # Gera tráfego para a Weather API: requisições corretas, erros 400 e exceções.
 #
 # Uso:
-#   ./load-test.sh --iterations <N> --env <dev|prod>
+#   ./load-test.sh --iterations <N> --env <dev|prod> [--sleep <segundos>]
 #
 # Exemplos:
 #   ./load-test.sh --iterations 10 --env dev
-#   ./load-test.sh --iterations 5 --env prod
+#   ./load-test.sh --iterations 5 --env prod --sleep 1
+#   ./load-test.sh --iterations 10 --env dev -s 0.2
 
 set -e
 
@@ -20,8 +21,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --iterations|-i) ITERATIONS="$2"; shift 2 ;;
     --env|-e)        ENV="$2";        shift 2 ;;
+    --sleep|-s)      SLEEP="$2";      shift 2 ;;
     *)
-      echo "Uso: $0 --iterations <N> --env <dev|prod>"
+      echo "Uso: $0 --iterations <N> --env <dev|prod> [--sleep <segundos>]"
       exit 1
       ;;
   esac

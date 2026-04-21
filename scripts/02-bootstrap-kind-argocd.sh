@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Cria o cluster Kind (nome padrão: local) e instala o Argo CD.
-# Compatível com macOS e Linux (incl. WSL2), desde que Docker e kubectl estejam no PATH.
+# Bootstrap completo do cluster local:
+#   1. Cluster Kind
+#   2. cert-manager        (pré-requisito do OpenTelemetry Operator)
+#   3. OpenTelemetry Operator  (pré-requisito para o recurso Instrumentation)
+#   4. Argo CD
+#
+# Compatível com macOS e Linux (incl. WSL2), desde que Docker, kind e kubectl estejam no PATH.
 #
 # Uso:
 #   ./scripts/bootstrap-kind-argocd.sh
 #   CLUSTER_NAME=local ARGOCD_VERSION=v2.13.4 ./scripts/bootstrap-kind-argocd.sh
 #
 # Variáveis de ambiente:
-#   CLUSTER_NAME     Nome do cluster Kind (padrão: local — alinhado a scripts/deploy-*.sh)
+#   CLUSTER_NAME     Nome do cluster Kind (padrão: local)
 #   ARGOCD_VERSION   Tag do repositório argo-cd (ex.: v2.13.4) ou "stable"
 
 set -euo pipefail
@@ -48,6 +53,32 @@ fi
 
 kubectl config use-context "kind-${CLUSTER_NAME}" >/dev/null
 
+# ── cert-manager ───────────────────────────────────────────────────────────────
+CERT_MANAGER_URL="${CERT_MANAGER_URL:-https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml}"
+if kubectl get deployment cert-manager -n cert-manager >/dev/null 2>&1; then
+  echo "==> cert-manager: já instalado; pulando."
+else
+  echo "==> Instalando cert-manager..."
+  kubectl apply --server-side --force-conflicts -f "$CERT_MANAGER_URL"
+  kubectl wait --for=condition=available deployment/cert-manager           -n cert-manager --timeout=300s
+  kubectl wait --for=condition=available deployment/cert-manager-webhook   -n cert-manager --timeout=300s
+  kubectl wait --for=condition=available deployment/cert-manager-cainjector -n cert-manager --timeout=300s
+  echo "✓ cert-manager pronto."
+fi
+
+# ── OpenTelemetry Operator ─────────────────────────────────────────────────────
+OTEL_OPERATOR_URL="${OTEL_OPERATOR_URL:-https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml}"
+if kubectl get deployment opentelemetry-operator-controller-manager -n opentelemetry-operator-system >/dev/null 2>&1; then
+  echo "==> OpenTelemetry Operator: já instalado; pulando."
+else
+  echo "==> Instalando OpenTelemetry Operator..."
+  kubectl apply --server-side --force-conflicts -f "$OTEL_OPERATOR_URL"
+  kubectl wait --for=condition=available deployment/opentelemetry-operator-controller-manager \
+    -n opentelemetry-operator-system --timeout=300s
+  echo "✓ OpenTelemetry Operator pronto."
+fi
+
+# ── Argo CD ────────────────────────────────────────────────────────────────────
 if [[ "$ARGOCD_VERSION" == "stable" ]]; then
   MANIFEST_URL="https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
 else

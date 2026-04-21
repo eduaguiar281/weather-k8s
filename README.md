@@ -4,6 +4,8 @@ Stack de exemplo com API de clima, manifests Kubernetes (Kustomize), observabili
 
 Este documento cobre o ambiente local desde o zero: cluster Kind, instalação do Argo CD e notas para **macOS** e **Linux (incluindo WSL2)** sem depender de caminhos ou ferramentas específicos de uma única plataforma.
 
+---
+
 ## Pré-requisitos
 
 | Ferramenta | Função |
@@ -12,11 +14,9 @@ Este documento cobre o ambiente local desde o zero: cluster Kind, instalação d
 | [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) | Cria o cluster Kubernetes local |
 | [kubectl](https://kubernetes.io/docs/tasks/tools/) | CLI do Kubernetes |
 
-**Regra geral:** use os binários no `PATH` e o mesmo contexto `kubectl` que o Kind configurar (`kind-local` quando o cluster se chama `local`). Os scripts do repositório assumem o cluster **`local`** para alinhar com `kind load docker-image --name local` e com o nó Docker `local-control-plane`.
+**Regra geral:** use os binários no `PATH` e o mesmo contexto `kubectl` que o Kind configurar (`kind-local` quando o cluster se chama `local`). Os scripts do repositório assumem o cluster **`local`**.
 
 ### macOS
-
-Instalação típica com Homebrew:
 
 ```bash
 brew install kind kubectl
@@ -39,139 +39,142 @@ sudo apt-get update && sudo apt-get install -y kubectl
 
 Evite misturar `kubectl` do Windows com o cluster criado no WSL: sempre use o `kubectl` do mesmo ambiente em que o Kind foi executado.
 
-## Passo a passo completo (ordem)
+---
 
-Siga nesta ordem. Em cada etapa, só avance se o “como verificar” estiver ok.
+## Passo a passo completo (ordem obrigatória)
+
+Siga nesta ordem. Em cada etapa, só avance se o "verificar" estiver ok.
 
 ### 1. Ferramentas e Docker
 
-- Instale **Docker** (Desktop no Mac), **kind** e **kubectl** e confira:
-
-  ```bash
-  docker info
-  kind version
-  kubectl version --client
-  ```
-
-### 2. Repositório Git no GitHub (importante para o Argo CD)
-
-O Argo CD **clona o Git remoto** (`repoURL` em `k8s/argocd/*.yaml`), não o seu diretório local. **Commits que não estiverem no GitHub não entram no sync.**
-
-- Faça **commit e push** do branch que você usa (ex.: `main`) para `origin` antes de confiar no sync.
-- O `repoURL` deve ser **HTTPS** para repo público (`https://github.com/.../weather-k8s.git`). Repo **privado** exige [credencial no Argo CD](https://argo-cd.readthedocs.io/en/stable/user-guide/private-repositories/).
-
-### 3. Rede Docker do Compose + stack de observabilidade
-
-Na **raiz** do repositório:
+Instale **Docker**, **kind** e **kubectl** e confirme:
 
 ```bash
-./scripts/ensure-observability-network.sh
+docker info
+kind version
+kubectl version --client
+```
+
+### 2. Commit e push no GitHub (obrigatório antes do passo 5)
+
+O Argo CD **clona o repositório remoto** (`repoURL` em `k8s/argocd/*.yaml`), não o seu diretório local. Mudanças que não estiverem no GitHub não entram no sync.
+
+- Faça **commit e push** do branch que você usa (ex.: `main`) para `origin` antes de prosseguir.
+
+### 3. Rede Docker + stack de observabilidade
+
+```bash
+./scripts/01-ensure-observability-network.sh
 docker compose up -d
 ```
 
-Verificar: `docker compose ps` (serviços `Up`).
+Verificar: `docker compose ps` — todos os serviços em `Up`.
 
-### 4. Cluster Kind + Argo CD
+Se aparecer *network declared as external, but could not be found*: rode `./scripts/01-ensure-observability-network.sh` e tente de novo.
+
+### 4. Cluster Kind + cert-manager + OpenTelemetry Operator + Argo CD
 
 ```bash
-./scripts/bootstrap-kind-argocd.sh
+./scripts/02-bootstrap-kind-argocd.sh
 kubectl config use-context kind-local
 kubectl get pods -n argocd
 ```
 
-Verificar: pods do `argocd` em `Running` (pode levar alguns minutos na primeira vez). Se `argocd-server` ficar `Pending`, use `kubectl describe pod -n argocd -l app.kubernetes.io/name=argocd-server` e aguarde pull de imagem ou recursos.
+O script instala em sequência, aguardando cada etapa: **Kind → cert-manager → OpenTelemetry Operator → Argo CD**. Se algum componente já existir, pula automaticamente.
 
-### 5. Registrar os Applications no cluster
+Verificar: pods do namespace `argocd` em `Running` (pode levar ~5 min na primeira vez).
 
-Se estiver a usar **SSH** com o GitHub (e `repoURL` em `git@github.com:...` nos YAML), **antes** crie o Secret no cluster:
+> **Nota sobre versões:** por padrão aplica o manifest `stable` do Argo CD. Para fixar uma versão:
+> ```bash
+> ARGOCD_VERSION=v2.13.4 ./scripts/02-bootstrap-kind-argocd.sh
+> ```
 
-```bash
-./scripts/apply-argocd-ssh-secret.sh
-```
+### 5. Credencial SSH do GitHub no Argo CD
 
-Depois aplique os Applications:
+> **Apenas se `repoURL` nos YAML usar `git@github.com:...` (SSH).** Para repos públicos com HTTPS, pule este passo.
 
-```bash
-kubectl apply -f k8s/argocd/weather-infra.yaml
-kubectl apply -f k8s/argocd/weather-api-dev.yaml
-# opcional — prod:
-# kubectl apply -f k8s/argocd/weather-api-prod.yaml
-```
-
-Verificar até **Sync Status = Synced** (e sem `ComparisonError`):
+**5.1 — Gerar par de chaves dedicado** (sem passphrase):
 
 ```bash
-kubectl get application -n argocd
+ssh-keygen -t ed25519 -f ~/.ssh/argocd-weather-k8s -N ""
 ```
 
-Se aparecer erro de Git: com **HTTPS** e repo público, confira **push** para o GitHub; com **SSH**, confira o Secret (`./scripts/apply-argocd-ssh-secret.sh`) e o `repoURL` igual ao do Secret.
+**5.2 — Registrar a chave pública no GitHub:**
 
-### 6. Deploy da imagem local (dev)
+GitHub → repositório → **Settings → Deploy keys → Add deploy key** → cole o conteúdo de `~/.ssh/argocd-weather-k8s.pub`.  
+_(Write access só se o Argo CD precisar escrever no repo — no fluxo comum não é necessário.)_
 
-Com o passo 5 ok:
+**5.3 — Criar o Secret no cluster:**
+
+> **Atenção:** abra `scripts/03-apply-argocd-ssh-secret.sh` e confirme que `ARGOCD_REPO_URL_PREFIX` corresponde ao seu usuário GitHub (padrão: `git@github.com:eduaguiar281`). Se o usuário for diferente, passe via variável de ambiente:
+> ```bash
+> ARGOCD_REPO_URL_PREFIX=git@github.com:SEU_USUARIO ./scripts/03-apply-argocd-ssh-secret.sh
+> ```
 
 ```bash
-./scripts/deploy-dev.sh
+./scripts/03-apply-argocd-ssh-secret.sh
 ```
 
-### 7. Ponte Kind ↔ Docker Compose (telemetria / rede)
+**5.4 — Conferir que o `repoURL` nos Applications usa SSH:**
 
-Com Kind e Compose no ar:
+Cada arquivo `k8s/argocd/*.yaml` deve ter:
+
+```yaml
+spec:
+  source:
+    repoURL: git@github.com:SEU_USUARIO/weather-k8s.git
+```
+
+O Argo CD compara o `repoURL` com o prefixo do Secret: precisam ser **idênticos** (mesma forma, mesmo usuário). Se estiver em HTTPS e quiser SSH, troque apenas a linha `repoURL` nos três arquivos e faça commit + push.
+
+### 6. Aplicar os Applications no cluster
 
 ```bash
-./scripts/setup-kind-network.sh
+./scripts/04-apply-argocd-apps.sh           # infra + dev
+# ./scripts/04-apply-argocd-apps.sh --prod  # inclui prod também
 ```
 
-### 8. UIs (opcional)
+O script aplica os manifests, aguarda o sync inicial e **detecta e corrige automaticamente** o erro de webhook do OpenTelemetry Operator (`connection refused`) que pode ocorrer logo após o bootstrap.
 
-- **Argo CD:** `kubectl port-forward svc/argocd-server -n argocd 8080:443` → https://localhost:8080  
-- Senha admin: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo`
+Esperado ao final: `SYNC STATUS = Synced` e `HEALTH STATUS = Healthy` para todos.
 
----
-
-## Subir o cluster Kind e instalar o Argo CD
-
-A partir da raiz do repositório:
+### 7. Deploy da imagem local
 
 ```bash
-chmod +x scripts/bootstrap-kind-argocd.sh   # uma vez
-./scripts/bootstrap-kind-argocd.sh
+./scripts/05-deploy.sh dev    # build + kind load + rollout em dev
+./scripts/05-deploy.sh prod   # idem em prod
+./scripts/05-deploy.sh all    # os dois
 ```
 
-O script:
+Internamente chama `deploy-dev.sh` e/ou `deploy-prod.sh`.
 
-1. Verifica Docker, `kind` e `kubectl`.
-2. Cria o cluster **`local`** com `kind/cluster-config.yaml` (se ainda não existir).
-3. Instala o Argo CD no namespace `argocd` (se ainda não estiver instalado).
-4. Mostra como obter a senha inicial do usuário `admin` e como expor a UI.
+### 8. Ponte Kind ↔ Docker Compose (telemetria)
 
-### Versão do Argo CD
-
-Por padrão o manifest **`stable`** do projeto Argo CD é aplicado. Para fixar uma versão (builds reproduzíveis):
+Execute sempre que reiniciar o cluster Kind ou o Compose:
 
 ```bash
-ARGOCD_VERSION=v2.13.4 ./scripts/bootstrap-kind-argocd.sh
+./scripts/06-setup-kind-network.sh
 ```
 
-Substitua pela tag desejada no repositório [argoproj/argo-cd](https://github.com/argoproj/argo-cd/releases).
+### 9. Acessar as UIs (opcional)
 
-Se uma execução antiga falhou com *metadata.annotations: Too long* no CRD `applicationsets`, rode de novo `./scripts/bootstrap-kind-argocd.sh` (o script usa `kubectl apply --server-side` e só pula a instalação quando o deployment e o CRD `applicationsets.argoproj.io` já existem). Em último caso: `kubectl delete namespace argocd` e execute o bootstrap outra vez.
-
-### Acessar a interface web do Argo CD
-
-Em outro terminal:
-
+**Argo CD:**
 ```bash
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
+Abra **https://localhost:8080** — usuário `admin`, senha:
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d && echo
+```
 
-Abra **https://localhost:8080** — usuário **admin**, senha impressa pelo script (ou obtida com o comando abaixo). O certificado é autofirmado; aceite o aviso do navegador.
+---
 
-#### Se aparecer `connection refused` em `localhost:8080` ao rodar *qualquer* `kubectl`
+## Troubleshooting
 
-Isso costuma ser o **cliente `kubectl` falhando ao falar com a API do Kubernetes**, não o Argo CD “sumindo”. O log que cita `Get "http://localhost:8080/api..."` indica que o **kubeconfig** está com `server` apontando para `http://localhost:8080` (nada escutando aí) em vez do endpoint do Kind (normalmente `https://127.0.0.1:<porta>`).
+### `kubectl` aponta para `localhost:8080` (connection refused)
 
-Confira e corrija:
+O kubeconfig está errado — o cliente tenta falar com `http://localhost:8080` em vez do endpoint do Kind.
 
 ```bash
 kind get clusters
@@ -181,130 +184,62 @@ kind export kubeconfig --name local
 kubectl cluster-info
 ```
 
-Se o cluster não existir mais, recrie com `./scripts/bootstrap-kind-argocd.sh` (ou `kind create cluster --name local --config kind/cluster-config.yaml`).
+Se o cluster não existir mais, recrie: `./scripts/02-bootstrap-kind-argocd.sh`.
 
-**Onde “está” o Argo CD:** ele roda **como pods dentro do cluster Kind**, não como um container Docker solto com o nome `argocd`. No Docker você costuma ver o nó do Kind (por exemplo `local-control-plane`). Para ver o Argo: `kubectl get pods -n argocd` com o contexto `kind-local` ativo.
+**Onde está o Argo CD:** roda como pods dentro do Kind, não como container Docker solto. Para ver: `kubectl get pods -n argocd` com o contexto `kind-local` ativo.
+
+### O cluster Kind "desapareceu"
+
+Clusters Kind são containers Docker — se o Docker reiniciar ou o container for removido, o cluster some. Recrie com:
 
 ```bash
-kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath='{.data.password}' | base64 -d && echo
+./scripts/02-bootstrap-kind-argocd.sh
 ```
 
-### Apagar o cluster local (opcional — **não** é passo do fluxo normal)
+> `kind delete cluster --name local` **apaga** o cluster intencionalmente. Não faz parte do fluxo normal — só use se quiser descartar tudo.
 
-**Não faz parte da instalação nem do dia a dia.** Só serve quando você **quer mesmo descartar** o cluster de desenvolvimento e tudo que roda nele (incluindo Argo CD e aplicações). Se o objetivo é só “ter de novo” um cluster que sumiu, use `./scripts/bootstrap-kind-argocd.sh` — não apague antes.
+### Argo CD: `Too long` ao instalar CRDs
 
-Se, e somente se, for intencional apagar: `kind delete cluster --name local`.
+O script usa `kubectl apply --server-side --force-conflicts`, que evita o problema. Se já instalou sem `--server-side` e encontrou o erro:
 
-## Observabilidade (Docker Compose) e ponte com o Kind
+```bash
+kubectl delete namespace argocd
+./scripts/02-bootstrap-kind-argocd.sh
+```
 
-O `docker-compose.yml` sobe Grafana, Prometheus, Loki, Jaeger, OpenTelemetry Collector, PostgreSQL, a API, etc. Parte dos serviços usa a rede Docker externa **`observability_observability`** (alias `kind_bridge` no Compose) para IPs fixos (`172.23.0.50` / `172.23.0.51`) e para o nó do Kind se conectar à mesma ponte que o stack de observabilidade.
+### Argo CD: `ssh: no key found` ou erro de autenticação Git
 
-**Ordem recomendada no primeiro uso:**
+1. Confirme que o Secret existe: `kubectl get secret repo-weather-k8s-ssh-creds -n argocd`
+2. Rode novamente: `./scripts/03-apply-argocd-ssh-secret.sh`
+3. Confirme que `repoURL` nos Applications é `git@github.com:SEU_USUARIO/...` (não HTTPS)
+4. Confirme que a chave pública está registrada no GitHub (Deploy keys ou SSH keys da conta)
 
-1. **Garantir a rede Docker** (uma vez, antes do `compose up`). O script cria a rede externa **`observability_observability`** com subnet **`172.23.0.0/16`** e gateway **`172.23.0.1`**, alinhada aos IPs fixos do Compose (Loki / OTel) e ao `COMPOSE_CIDR` em `scripts/setup-kind-network.sh`. Se a rede já existir, o script não altera nada.
+### Applications OutOfSync por erro de webhook do OTel Operator
 
-   ```bash
-   chmod +x scripts/ensure-observability-network.sh   # uma vez
-   ./scripts/ensure-observability-network.sh
-   ```
+O script `04-apply-argocd-apps.sh` detecta e corrige isso automaticamente. Se precisar corrigir manualmente:
 
-2. **Subir o Compose** na raiz do repositório:
-
-   ```bash
-   docker compose up -d
-   ```
-
-   (Em ambientes mais antigos o comando pode ser `docker-compose up -d`.)
-
-3. **Cluster Kind + Argo CD** — conforme a seção [Subir o cluster Kind e instalar o Argo CD](#subir-o-cluster-kind-e-instalar-o-argo-cd) (`./scripts/bootstrap-kind-argocd.sh`).
-
-4. **Conectar o Kind à rede do Compose** (roteamento pods ↔ stack Docker). Execute sempre que reiniciar o cluster Kind ou o Compose:
-
-   ```bash
-   chmod +x scripts/setup-kind-network.sh   # uma vez
-   ./scripts/setup-kind-network.sh
-   ```
-
-   O script conecta o container do nó **`local-control-plane`** à rede `observability_observability`, ajusta `iptables` no nó e inicia `kubectl port-forward` para a API e para o Argo CD (portas locais indicadas ao final do script).
-
-**Mac e WSL:** o fluxo é o mesmo; use sempre o Docker do mesmo ambiente em que o Kind e o Compose rodam. No WSL2, não misture `kubectl`/Compose do Windows com o cluster criado dentro da distro.
-
-Se `docker compose up` falhar com *network … declared as external, but could not be found*, a rede `observability_observability` ainda não existe — rode `./scripts/ensure-observability-network.sh` e suba o Compose de novo.
-
-## Argo CD: GitHub via SSH (passo a passo)
-
-Seu `~/.ssh` no Mac/WSL **não** é usado pelos pods do Argo CD. É preciso uma **chave só para o cluster** (Secret) e o `repoURL` dos Applications em **`git@github.com:...`**.
-
-1. **Gerar um par de chaves dedicado** (recomendado; não reuse a chave pessoal). **Sem passphrase** no arquivo que o Argo vai ler (senão costuma complicar):
-   ```bash
-   ssh-keygen -t ed25519 -f ~/.ssh/argocd-weather-k8s -N ""
-   ```
-2. **Registrar a chave pública no GitHub** (o repo `weather-k8s`):
-   - GitHub → repositório → **Settings** → **Deploy keys** → **Add deploy key** → cole o conteúdo de `~/.ssh/argocd-weather-k8s.pub` → marque **Allow write access** só se precisar que o Argo escreva no repo (no fluxo comum, **não** é necessário).
-   - Alternativa: adicionar a mesma pubkey em **SSH keys** da sua conta GitHub (vale para todos os repos da conta).
-3. **Criar o Secret no namespace `argocd`** a partir da **chave privada no disco** (evita colar `-----BEGIN...` num YAML — o `---` quebra o parser). Troque `eduaguiar281` na variável só se o repo for outro:
-   ```bash
-   chmod +x scripts/apply-argocd-ssh-secret.sh   # uma vez
-   ./scripts/apply-argocd-ssh-secret.sh
-   ```
-   Por omissão usa `~/.ssh/argocd-weather-k8s` e `git@github.com:eduaguiar281/weather-k8s.git`. Outra chave ou URL: `ARGOCD_SSH_KEY=... ARGOCD_REPO_URL=... ./scripts/apply-argocd-ssh-secret.sh`.
-4. **`spec.source.repoURL` nos Applications (alinhado ao Secret)**  
-   Cada recurso `Application` do Argo CD diz **de onde** buscar o Git: é o campo `spec.source.repoURL`. O Argo compara esse texto com o `url` do Secret: têm de ser **a mesma forma de endereço** (SSH) que você pôs no Secret (`git@github.com:usuario/repo.git`).  
-   - Se `repoURL` for `https://github.com/...`, o Argo trata como **outro repositório** e **não** aplica automaticamente a credencial SSH que registou para `git@github.com:...`.  
-   - Por isso, nos **três** ficheiros abaixo, troque só a linha `repoURL` de HTTPS para o URL SSH **idêntico** ao do Secret (incluindo `usuário/repo` e `.git` no fim):
-
-   | Ficheiro | Caminho Kustomize / chart |
-   |----------|---------------------------|
-   | `k8s/argocd/weather-infra.yaml` | `k8s/infra` |
-   | `k8s/argocd/weather-api-dev.yaml` | `k8s/overlays/dev` |
-   | `k8s/argocd/weather-api-prod.yaml` | `k8s/overlays/prod` |
-
-   **Antes** (exemplo — modo HTTPS):
-   ```yaml
-   spec:
-     source:
-       repoURL: https://github.com/eduaguiar281/weather-k8s.git
-       path: k8s/overlays/dev
-   ```
-
-   **Depois** (modo SSH — o mesmo URL que no Secret):
-   ```yaml
-   spec:
-     source:
-       repoURL: git@github.com:eduaguiar281/weather-k8s.git
-       path: k8s/overlays/dev
-   ```
-
-   Não mude `path` nem `targetRevision` — só **`repoURL`**. Guarde os ficheiros, faça `git add` / `commit` / `push` se quiser que o histórico no GitHub fique coerente; no cluster, o que importa na hora é `kubectl apply -f k8s/argocd/...` com este YAML atualizado.
-5. **Aplicar de novo os Applications** e ver o sync:
-   ```bash
-   kubectl apply -f k8s/argocd/weather-infra.yaml
-   kubectl apply -f k8s/argocd/weather-api-dev.yaml
-   kubectl get application -n argocd
-   ```
-6. O script do passo 3 já reinicia o `argocd-repo-server`. Se sincronizar à mão: `kubectl rollout restart deployment/argocd-repo-server -n argocd`.
-
-Referência: [Repositórios privados no Argo CD](https://argo-cd.readthedocs.io/en/stable/user-guide/private-repositories/).
+```bash
+kubectl delete application weather-api-dev -n argocd
+kubectl apply -f k8s/argocd/weather-api-dev.yaml
+```
 
 ---
 
-## GitOps, deploy da imagem e documentação adicional
-
-- **Modo simples (repo público):** em `k8s/argocd/` use **`repoURL` HTTPS** — não precisa Secret.
-- **Modo SSH:** siga a secção [Argo CD: GitHub via SSH](#argo-cd-github-via-ssh-passo-a-passo) acima. Repo **privado** por HTTPS exige PAT/credencial na [documentação oficial](https://argo-cd.readthedocs.io/en/stable/user-guide/private-repositories/).
-- **Deploy local da imagem** (build + `kind load` + rollout): `scripts/deploy-dev.sh` e `scripts/deploy-prod.sh`.
-
-## Estrutura útil
+## Estrutura do repositório
 
 | Caminho | Descrição |
 |---------|-----------|
 | `kind/cluster-config.yaml` | Configuração do cluster Kind (um control-plane) |
-| `docker-compose.yml` | Stack de observabilidade + API + Postgres (rede externa `observability_observability`) |
-| `scripts/ensure-observability-network.sh` | Cria a rede Docker externa antes do `docker compose up` |
-| `scripts/bootstrap-kind-argocd.sh` | Bootstrap Kind + Argo CD |
-| `scripts/setup-kind-network.sh` | Ponte de rede Kind ↔ Docker Compose + port-forwards |
-| `scripts/apply-argocd-ssh-secret.sh` | Cria o Secret SSH do GitHub no Argo CD a partir de `~/.ssh/argocd-weather-k8s` |
-| `k8s/argocd/repo-github-ssh.secret.yaml.example` | Referência manual de Secret (SSH) — prefira o script acima |
+| `docker-compose.yml` | Stack de observabilidade + API + Postgres |
+| `scripts/01-ensure-observability-network.sh` | Cria a rede Docker externa antes do `docker compose up` |
+| `scripts/02-bootstrap-kind-argocd.sh` | Bootstrap: Kind + cert-manager + OTel Operator + Argo CD |
+| `scripts/03-apply-argocd-ssh-secret.sh` | Cria o Secret SSH no Argo CD a partir de `~/.ssh/argocd-weather-k8s` |
+| `scripts/04-apply-argocd-apps.sh` | Aplica os Applications do Argo CD (com retry automático do webhook OTel) |
+| `scripts/05-deploy.sh` | Orquestrador de deploy: `dev`, `prod` ou `all` |
+| `scripts/06-setup-kind-network.sh` | Ponte de rede Kind ↔ Docker Compose |
+| `scripts/deploy-dev.sh` | Build + `kind load` + rollout da imagem de dev (chamado pelo 05) |
+| `scripts/deploy-prod.sh` | Build + `kind load` + rollout da imagem de prod (chamado pelo 05) |
+| `k8s/argocd/` | Manifests dos Applications do Argo CD |
+| `k8s/argocd/repo-github-ssh.secret.yaml.example` | Referência manual do Secret SSH (prefira o script) |
 | `k8s/` | Manifests base, overlays e apps Argo CD |
 | `app/` | API FastAPI (ver `app/README.md`) |

@@ -408,8 +408,8 @@
       "targets": [{
         "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" },
         "queryType": "search",
-        "service": "weather-api",
-        "tags": "{\"http.status_code\":\"200\"}",
+        "service": "$application",
+        "tags": "http.status_code=200 deployment.environment=$environment",
         "limit": 10,
         "refId": "A"
       }],
@@ -445,8 +445,8 @@
       "targets": [{
         "datasource": { "type": "jaeger", "uid": "PC9A941E8F2E49454" },
         "queryType": "search",
-        "service": "weather-api",
-        "tags": "{\"http.status_code\":\"400\"}",
+        "service": "$application",
+        "tags": "http.status_code=400 deployment.environment=$environment",
         "limit": 10,
         "refId": "A"
       }],
@@ -478,9 +478,15 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-          "expr": "{service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\", log_source=~\"$log_source\"} or {service_name=\"$application\", deployment_environment=\"$environment\", exporter=\"OTLP\"} or {app_name=\"weather.api\", namespace=~\"weather.*\", container=\"weather-api\", log_source=~\"$log_source\", env=~\"^$environment\"}",
-          "legendFormat": "",
+          "expr": "{service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\"}",
+          "legendFormat": "k8s",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "{service_name=\"$application\", deployment_environment=\"$environment\", exporter=\"OTLP\"}",
+          "legendFormat": "otel",
+          "refId": "B"
         }
       ]
     },
@@ -500,7 +506,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-          "expr": "sum(count_over_time({service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\", log_source=\"app\"}[1h])) + sum(count_over_time({app_name=\"weather.api\", namespace=~\"weather.*\", container=\"weather-api\", log_source=\"app\", env=~\"^$environment\"}[1h]))",
+          "expr": "sum(count_over_time({service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\"}[1h]))",
           "refId": "A"
         }
       ]
@@ -521,7 +527,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-          "expr": "sum(count_over_time({service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\", log_source=\"otel_sdk\"}[1h])) + sum(count_over_time({app_name=\"weather.api\", namespace=~\"weather.*\", container=\"weather-api\", log_source=\"otel_sdk\", env=~\"^$environment\"}[1h]))",
+          "expr": "sum(count_over_time({service_name=\"$application\", deployment_environment=\"$environment\", exporter=\"OTLP\"}[1h]))",
           "refId": "A"
         }
       ]
@@ -542,9 +548,15 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-          "expr": "sum by (log_source) (rate({service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\"}[1m])) + sum by (log_source) (rate({app_name=\"weather.api\", namespace=~\"weather.*\", container=\"weather-api\", env=~\"^$environment\"}[1m]))",
-          "legendFormat": "{{log_source}}",
+          "expr": "sum(rate({service_name=\"$application\", deployment_environment=\"$environment\", container=\"weather-api\"}[1m]))",
+          "legendFormat": "k8s",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "expr": "sum(rate({service_name=\"$application\", deployment_environment=\"$environment\", exporter=\"OTLP\"}[1m]))",
+          "legendFormat": "otel",
+          "refId": "B"
         }
       ]
     }
