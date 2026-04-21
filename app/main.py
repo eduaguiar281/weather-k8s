@@ -5,6 +5,7 @@ import psycopg2
 import os
 import logging
 from pythonjsonlogger import jsonlogger
+from opentelemetry import metrics
 
 # ── Logging ────────────────────────────────────────────────
 handler = logging.StreamHandler()
@@ -17,6 +18,20 @@ logger = logging.getLogger(__name__)
 
 APP_NAME = os.getenv("APP_NAME", "weather.api")
 ENV = os.getenv("ENV", "dev")
+
+_meter = metrics.get_meter("weather.api")
+
+city_requests_counter = _meter.create_counter(
+    name="weather.city.requests",
+    description="Número de consultas ao endpoint /weather por cidade",
+    unit="1",
+)
+
+validation_errors_counter = _meter.create_counter(
+    name="weather.validation.errors",
+    description="Erros de validação de entrada por motivo",
+    unit="1",
+)
 
 app = FastAPI(
     title="Weather API",
@@ -67,6 +82,7 @@ def get_weather(
     # Validação: tamanho da cidade
     if len(city) > 50:
         logger.warning("City name too long", extra={"city": city, "length": len(city)})
+        validation_errors_counter.add(1, {"reason": "city_name_too_long", "env": ENV})
         raise HTTPException(
             status_code=400,
             detail="O nome da cidade não pode ter mais de 50 caracteres.",
@@ -80,6 +96,7 @@ def get_weather(
             parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
         except ValueError:
             logger.warning("Invalid date format", extra={"date": date})
+            validation_errors_counter.add(1, {"reason": "invalid_date_format", "env": ENV})
             raise HTTPException(
                 status_code=400,
                 detail=f"Data inválida: '{date}'. Use o formato YYYY-MM-DD.",
@@ -118,6 +135,7 @@ def get_weather(
         logger.warning("No records found", extra={"city": city, "date": str(parsed_date)})
         raise HTTPException(status_code=404, detail=detail)
 
+    city_requests_counter.add(1, {"city": city, "env": ENV})
     logger.info("Weather records returned", extra={"city": city, "count": len(rows)})
 
     # Serializa date para string

@@ -1,0 +1,318 @@
+{
+  "uid": "weather-business",
+  "title": "Weather — Métricas de Negócio",
+  "tags": ["weather", "business", "otel"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "10s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "application",
+        "type": "query",
+        "label": "Aplicação",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(otel_weather_city_requests_total, service_name)",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": { "selected": false, "text": "weather.api", "value": "weather.api" },
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "environment",
+        "type": "query",
+        "label": "Ambiente",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(otel_weather_city_requests_total{service_name=\"$application\"}, deployment_environment)",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "city",
+        "type": "query",
+        "label": "Cidade",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(otel_weather_city_requests_total{service_name=\"$application\", deployment_environment=~\"$environment\"}, city)",
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "options": [],
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Visão Geral",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total de Consultas (período)",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["sum"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "round(sum(increase(otel_weather_city_requests_total{service_name=\"$application\",deployment_environment=~\"$environment\",city=~\"$city\"}[$__range])))",
+        "legendFormat": "consultas",
+        "instant": true,
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Cidades Distintas Consultadas (período)",
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "purple", "mode": "fixed" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "purple", "value": null }]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "count(sum by (city) (round(increase(otel_weather_city_requests_total{service_name=\"$application\",deployment_environment=~\"$environment\"}[$__range])) > 0))",
+        "legendFormat": "cidades",
+        "instant": true,
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Erros de Validação (período)",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "round(sum(increase(otel_weather_validation_errors_total{service_name=\"$application\",deployment_environment=~\"$environment\"}[$__range])))",
+        "legendFormat": "erros",
+        "instant": true,
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Taxa de Erro de Validação (1h)",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.15 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "sum(rate(otel_weather_validation_errors_total{service_name=\"$application\",deployment_environment=~\"$environment\"}[5m])) / sum(rate(otel_weather_city_requests_total{service_name=\"$application\",deployment_environment=~\"$environment\"}[5m]))",
+        "legendFormat": "% erros",
+        "instant": true,
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Consultas por Cidade",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 7,
+      "type": "bargauge",
+      "title": "Top Cidades Consultadas (período)",
+      "gridPos": { "x": 0, "y": 6, "w": 8, "h": 12 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "valueMode": "color",
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "sort_desc(sum by (city) (increase(otel_weather_city_requests_total{service_name=\"$application\",deployment_environment=~\"$environment\",city=~\"$city\"}[$__range])) / ignoring(city) group_left sum(increase(otel_weather_city_requests_total{service_name=\"$application\",deployment_environment=~\"$environment\",city=~\"$city\"}[$__range])))",
+        "legendFormat": "{{city}}",
+        "refId": "A",
+        "instant": true
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Consultas por Cidade ao Longo do Tempo (req/s)",
+      "gridPos": { "x": 8, "y": 6, "w": 16, "h": 12 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } }
+      },
+      "targets": [{
+        "expr": "sum by (city) (rate(otel_weather_city_requests_total{service_name=\"$application\",deployment_environment=~\"$environment\",city=~\"$city\"}[5m]))",
+        "legendFormat": "{{city}}",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Erros de Validação",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 10,
+      "type": "bargauge",
+      "title": "Erros por Motivo (período)",
+      "gridPos": { "x": 0, "y": 19, "w": 8, "h": 8 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "valueMode": "color",
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "red", "mode": "fixed" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "sort_desc(round(sum by (reason) (increase(otel_weather_validation_errors_total{service_name=\"$application\",deployment_environment=~\"$environment\"}[$__range]))))",
+        "legendFormat": "{{reason}}",
+        "refId": "A",
+        "instant": true
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Erros de Validação por Motivo ao Longo do Tempo",
+      "gridPos": { "x": 8, "y": 19, "w": 16, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2 },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [{
+        "expr": "sum by (reason) (rate(otel_weather_validation_errors_total{service_name=\"$application\",deployment_environment=~\"$environment\"}[5m]))",
+        "legendFormat": "{{reason}}",
+        "refId": "A"
+      }],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    }
+  ]
+}
