@@ -225,6 +225,57 @@ kubectl apply -f k8s/argocd/weather-api-dev.yaml
 
 ---
 
+## Integração com Cursor MCP (Model Context Protocol)
+
+Este projeto utiliza servidores MCP para permitir que o Cursor AI interaja diretamente com ferramentas de observabilidade, como o Grafana.
+
+### Configuração obrigatória: arquivo global `~/.cursor/mcp.json`
+
+> **Atenção:** o arquivo `mcp.json` deve ser criado **globalmente** na pasta `~/.cursor/`, e **não** dentro do repositório. Ele contém tokens sensíveis e é específico por máquina.
+
+Crie o arquivo `~/.cursor/mcp.json` com o seguinte conteúdo de exemplo:
+
+```json
+{
+  "mcpServers": {
+    "grafana": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--network", "host",
+        "-e", "GRAFANA_URL",
+        "-e", "GRAFANA_SERVICE_ACCOUNT_TOKEN",
+        "grafana/mcp-grafana",
+        "-t", "stdio"
+      ],
+      "env": {
+        "GRAFANA_URL": "http://localhost:3000",
+        "GRAFANA_SERVICE_ACCOUNT_TOKEN": "glsa_SEU_TOKEN_AQUI"
+      }
+    }
+  }
+}
+```
+
+#### Como gerar o token do Grafana
+
+1. Acesse o Grafana: **http://localhost:3000**
+2. Vá em **Administration → Service Accounts → Add service account**
+3. Dê o papel **Viewer** (ou **Editor** se precisar escrever)
+4. Clique em **Add service account token** e copie o valor gerado
+5. Substitua `glsa_SEU_TOKEN_AQUI` pelo token no `~/.cursor/mcp.json`
+
+#### Por que global e não no repositório?
+
+| Local | Motivo |
+|-------|--------|
+| `~/.cursor/mcp.json` | Correto — tokens ficam fora do repositório, configuração por máquina |
+| `.cursor/mcp.json` (no repo) | Evitar — risco de vazar tokens no histórico Git |
+
+Após criar ou editar o arquivo, **reinicie o Cursor** para que os servidores MCP sejam carregados.
+
+---
+
 ## Estrutura do repositório
 
 | Caminho | Descrição |
