@@ -10,6 +10,19 @@ datasources:
     isDefault: true
     jsonData:
       timeInterval: '15s'
+      manageAlerts: true
+      alertmanagerUid: alertmanager
+    # Permite ao Grafana listar/visualizar (read-only) as regras do Prometheus
+    # na UI de Alerting → Alert rules (datasource-managed).
+
+  - name: Alertmanager
+    type: alertmanager
+    uid: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false
 
   - name: Loki
     type: loki
