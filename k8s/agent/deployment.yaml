@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-agent
+  namespace: weather-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-agent
+  template:
+    metadata:
+      labels:
+        app: alert-agent
+        app_name: weather.agent
+      annotations:
+        instrumentation.opentelemetry.io/inject-python: "true"
+    spec:
+      containers:
+        - name: alert-agent
+          image: alert-agent:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          env:
+            - name: GRAFANA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: GRAFANA_URL
+            - name: GRAFANA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: GRAFANA_TOKEN
+            - name: LLM_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: LLM_PROVIDER
+            - name: LLM_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: LLM_MODEL
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: LLM_API_KEY
+            - name: LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: LLM_BASE_URL
+                  optional: true

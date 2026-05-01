@@ -138,17 +138,70 @@ O script aplica os manifests, aguarda o sync inicial e **detecta e corrige autom
 
 Esperado ao final: `SYNC STATUS = Synced` e `HEALTH STATUS = Healthy` para todos.
 
-### 7. Deploy da imagem local
+### 7. Deploy da weather-api
 
 ```bash
 ./scripts/05-deploy.sh dev    # build + kind load + rollout em dev
 ./scripts/05-deploy.sh prod   # idem em prod
-./scripts/05-deploy.sh all    # os dois
 ```
 
 Internamente chama `deploy-dev.sh` e/ou `deploy-prod.sh`.
 
-### 8. Ponte Kind ↔ Docker Compose (telemetria)
+### 8. Deploy do agente (Alert Agent)
+
+O agente roda no cluster Kubernetes (namespace `weather-agent`) e é gerenciado pelo Argo CD. Ele **não faz parte do Docker Compose**.
+
+**8.1 — Defina as variáveis de ambiente obrigatórias:**
+
+```bash
+export GRAFANA_TOKEN=glsa_SEU_TOKEN_AQUI   # token da service account do Grafana
+export LLM_API_KEY=sk-SEU_TOKEN_AQUI       # chave da API do provider LLM
+```
+
+Variáveis opcionais (têm padrão):
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `GRAFANA_URL` | `http://172.23.0.51:3000` | URL do Grafana acessível pelo cluster |
+| `LLM_PROVIDER` | `anthropic` | Provider: `anthropic` ou `openai` |
+| `LLM_MODEL` | `claude-sonnet-4-20250514` | Modelo a usar |
+| `LLM_BASE_URL` | _(vazio)_ | URL customizada para proxies/LM Studio |
+
+> O IP `172.23.0.51` é o endereço do Grafana na rede `kind_bridge` compartilhada com o cluster Kind. Verifique em `docker compose ps` se necessário.
+
+**8.2 — Execute o deploy:**
+
+```bash
+./scripts/05-deploy.sh agent
+# ou diretamente:
+./scripts/deploy-agent.sh
+```
+
+O script realiza: build da imagem → `kind load` → criação do Secret no cluster → aplicação do Application ArgoCD → aguarda rollout → configura port-forward.
+
+**8.3 — Verifique:**
+
+```bash
+kubectl get pods -n weather-agent
+curl http://localhost:8001/health
+```
+
+**8.4 — Configure o webhook no Grafana:**
+
+1. Acesse **http://localhost:3000**
+2. Vá em **Alerting → Contact points → New contact point**
+3. Tipo: **Webhook**
+4. URL: `http://alert-agent.weather-agent.svc.cluster.local/webhook` (interno ao cluster)
+   ou `http://localhost:8001/webhook` (via port-forward)
+5. Salve e adicione ao seu **Notification policy**
+
+**Para fazer deploy de tudo de uma vez:**
+
+```bash
+./scripts/05-deploy.sh all    # dev + prod + agente
+```
+
+### 9. Ponte Kind ↔ Docker Compose (telemetria)
 
 Execute sempre que reiniciar o cluster Kind ou o Compose:
 
@@ -156,7 +209,7 @@ Execute sempre que reiniciar o cluster Kind ou o Compose:
 ./scripts/06-setup-kind-network.sh
 ```
 
-### 9. Acessar as UIs (opcional)
+### 10. Acessar as UIs (opcional)
 
 **Argo CD:**
 ```bash
@@ -281,16 +334,22 @@ Após criar ou editar o arquivo, **reinicie o Cursor** para que os servidores MC
 | Caminho | Descrição |
 |---------|-----------|
 | `kind/cluster-config.yaml` | Configuração do cluster Kind (um control-plane) |
-| `docker-compose.yml` | Stack de observabilidade + API + Postgres |
+| `docker-compose.yml` | Stack de observabilidade + Postgres (Prometheus, Loki, Grafana, etc.) |
 | `scripts/01-ensure-observability-network.sh` | Cria a rede Docker externa antes do `docker compose up` |
 | `scripts/02-bootstrap-kind-argocd.sh` | Bootstrap: Kind + cert-manager + OTel Operator + Argo CD |
 | `scripts/03-apply-argocd-ssh-secret.sh` | Cria o Secret SSH no Argo CD a partir de `~/.ssh/argocd-weather-k8s` |
 | `scripts/04-apply-argocd-apps.sh` | Aplica os Applications do Argo CD (com retry automático do webhook OTel) |
-| `scripts/05-deploy.sh` | Orquestrador de deploy: `dev`, `prod` ou `all` |
+| `scripts/05-deploy.sh` | Orquestrador de deploy: `dev`, `prod`, `agent` ou `all` |
 | `scripts/06-setup-kind-network.sh` | Ponte de rede Kind ↔ Docker Compose |
-| `scripts/deploy-dev.sh` | Build + `kind load` + rollout da imagem de dev (chamado pelo 05) |
-| `scripts/deploy-prod.sh` | Build + `kind load` + rollout da imagem de prod (chamado pelo 05) |
-| `k8s/argocd/` | Manifests dos Applications do Argo CD |
+| `scripts/deploy-dev.sh` | Build + `kind load` + rollout da weather-api em dev (chamado pelo 05) |
+| `scripts/deploy-prod.sh` | Build + `kind load` + rollout da weather-api em prod (chamado pelo 05) |
+| `scripts/deploy-agent.sh` | Build + `kind load` + Secret + rollout do agente (chamado pelo 05) |
+| `k8s/base/` | Manifests base da weather-api (Kustomize) |
+| `k8s/overlays/` | Overlays dev e prod da weather-api |
+| `k8s/agent/` | Manifests do agente: namespace, deployment, service, instrumentation OTel |
+| `k8s/agent/secret.yaml.example` | Template do Secret do agente (valores reais criados pelo script) |
+| `k8s/argocd/` | Applications do Argo CD (weather-api-dev, weather-api-prod, weather-agent, weather-infra) |
 | `k8s/argocd/repo-github-ssh.secret.yaml.example` | Referência manual do Secret SSH (prefira o script) |
-| `k8s/` | Manifests base, overlays e apps Argo CD |
-| `app/` | API FastAPI (ver `app/README.md`) |
+| `k8s/infra/` | Manifests de infraestrutura (Promtail, etc.) |
+| `app/` | Código da weather-api FastAPI (ver `app/README.md`) |
+| `agent/` | Código do agente de alertas com LLM (ver `agent/README.md`) |

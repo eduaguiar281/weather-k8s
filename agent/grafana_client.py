@@ -1,6 +1,6 @@
 import time
 import httpx
-from app.config import settings
+from config import settings
 
 
 class GrafanaClient:

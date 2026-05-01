@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-agent
+  namespace: weather-agent
+spec:
+  selector:
+    app: alert-agent
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000

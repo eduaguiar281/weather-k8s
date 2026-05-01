@@ -1,13 +1,41 @@
 import logging
-import anthropic
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.language_models.chat_models import BaseChatModel
 
-from app.config import settings
-from app.tools.grafana_client import GrafanaClient
-from app.tools.alert_parser import parse_webhook, AlertContext
-from app.tools.context_collector import ContextCollector
-from app.prompts.analysis import SYSTEM_PROMPT, build_user_prompt
+from config import settings
+from grafana_client import GrafanaClient
+from alert_parser import parse_webhook, AlertContext
+from context_collector import ContextCollector
+from analysis import SYSTEM_PROMPT, build_user_prompt
 
 logger = logging.getLogger(__name__)
+
+
+def _build_llm(s) -> BaseChatModel:
+    """Instancia o modelo de LLM de acordo com LLM_PROVIDER."""
+    provider = s.llm_provider.lower()
+    base_url = s.llm_base_url or None
+
+    if provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(
+            model=s.llm_model,
+            api_key=s.llm_api_key,
+            **({"base_url": base_url} if base_url else {}),
+        )
+
+    if provider == "openai":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=s.llm_model,
+            api_key=s.llm_api_key,
+            **({"base_url": base_url} if base_url else {}),
+        )
+
+    raise ValueError(
+        f"LLM_PROVIDER '{provider}' não suportado. "
+        "Valores aceitos: anthropic, openai"
+    )
 
 
 class AlertAgent:
@@ -15,15 +43,17 @@ class AlertAgent:
     Orquestra o fluxo completo:
       1. Parseia o webhook do Grafana
       2. Coleta métricas (Prometheus) e logs (Loki)
-      3. Envia para a Claude API
+      3. Envia para a LLM via LangChain
       4. Retorna a análise formatada
     """
 
     def __init__(self):
         self.grafana = GrafanaClient()
         self.collector = ContextCollector(self.grafana)
-        self.claude = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key
+        self.llm = _build_llm(settings)
+        logger.info(
+            f"AgenteLLM iniciado — provider={settings.llm_provider} "
+            f"model={settings.llm_model}"
         )
 
     async def handle(self, payload: dict) -> str:
@@ -33,17 +63,13 @@ class AlertAgent:
             logger.warning("Webhook recebido sem alertas válidos.")
             return "Nenhum alerta válido encontrado no payload."
 
-        # processa o primeiro alerta (pode ser expandido para múltiplos)
         alert = alerts[0]
         logger.info(f"Processando alerta: {alert.title} [{alert.state}]")
 
         if alert.state == "resolved":
             return f"Alerta '{alert.title}' resolvido — nenhuma análise necessária."
 
-        # coleta contexto em paralelo
         metrics, logs, related = await self._collect_context(alert)
-
-        # gera análise com Claude
         analysis = await self._analyze(alert, metrics, logs, related)
 
         logger.info(f"Análise gerada para: {alert.title}")
@@ -60,7 +86,6 @@ class AlertAgent:
             return_exceptions=True,
         )
 
-        # se alguma coleta falhar, substitui por vazio
         if isinstance(metrics, Exception):
             logger.error(f"Falha ao coletar métricas: {metrics}")
             metrics = {}
@@ -81,12 +106,9 @@ class AlertAgent:
         related: list,
     ) -> str:
         user_prompt = build_user_prompt(alert, metrics, logs, related)
-
-        message = await self.claude.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1500,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-
-        return message.content[0].text
+        messages = [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=user_prompt),
+        ]
+        response = await self.llm.ainvoke(messages)
+        return response.content

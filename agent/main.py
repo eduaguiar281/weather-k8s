@@ -1,6 +1,6 @@
 import logging
 from fastapi import FastAPI, Request, HTTPException
-from app.agent import AlertAgent
+from agent import AlertAgent
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,3 +28,4 @@ async def receive_alert(request: Request):
     except Exception as e:
         logger.error(f"Erro ao processar alerta: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+\

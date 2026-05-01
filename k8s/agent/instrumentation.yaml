@@ -1,0 +1,21 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: agent-instrumentation
+  namespace: weather-agent
+spec:
+  exporter:
+    endpoint: http://172.23.0.50:4318
+  propagators:
+    - tracecontext
+    - baggage
+  python:
+    env:
+      - name: OTEL_LOGS_EXPORTER
+        value: otlp
+      - name: OTEL_PYTHON_LOG_CORRELATION
+        value: "true"
+      - name: OTEL_SERVICE_NAME
+        value: weather.agent
+      - name: OTEL_RESOURCE_ATTRIBUTES
+        value: "service.name=weather.agent,application.name=weather.agent"

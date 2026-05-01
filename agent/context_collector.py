@@ -1,6 +1,6 @@
 import logging
-from app.tools.grafana_client import GrafanaClient
-from app.tools.alert_parser import AlertContext
+from grafana_client import GrafanaClient
+from alert_parser import AlertContext
 
 logger = logging.getLogger(__name__)
 
