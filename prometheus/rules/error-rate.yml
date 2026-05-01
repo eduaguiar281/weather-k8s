@@ -1,0 +1,60 @@
+groups:
+  - name: weather-api.error-rate
+    interval: 30s
+    rules:
+
+      # Warning: erros HTTP 4xx + 5xx acima de 1% por 5 minutos
+      - alert: WeatherApiHttpErrorRateWarning
+        expr: |
+          (
+            sum by (service_name, deployment_environment) (
+              rate(otel_http_server_duration_milliseconds_count{
+                service_name="weather.api",
+                http_status_code=~"4..|5.."
+              }[5m])
+            )
+            /
+            sum by (service_name, deployment_environment) (
+              rate(otel_http_server_duration_milliseconds_count{
+                service_name="weather.api"
+              }[5m])
+            )
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          service: weather-api
+        annotations:
+          summary: "Taxa de erros HTTP (4xx+5xx) acima de 1% na weather-api ({{ $labels.deployment_environment }})"
+          description: |
+            A weather-api no ambiente {{ $labels.deployment_environment }} está com
+            {{ $value | humanizePercentage }} de respostas 4xx/5xx nos últimos 5 minutos.
+            Verifique logs e traces para identificar a causa.
+
+      # Critical: erros HTTP 4xx + 5xx acima de 5% por 5 minutos
+      - alert: WeatherApiHttpErrorRateCritical
+        expr: |
+          (
+            sum by (service_name, deployment_environment) (
+              rate(otel_http_server_duration_milliseconds_count{
+                service_name="weather.api",
+                http_status_code=~"4..|5.."
+              }[5m])
+            )
+            /
+            sum by (service_name, deployment_environment) (
+              rate(otel_http_server_duration_milliseconds_count{
+                service_name="weather.api"
+              }[5m])
+            )
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          service: weather-api
+        annotations:
+          summary: "Taxa de erros HTTP (4xx+5xx) acima de 5% na weather-api ({{ $labels.deployment_environment }})"
+          description: |
+            A weather-api no ambiente {{ $labels.deployment_environment }} está com
+            {{ $value | humanizePercentage }} de respostas 4xx/5xx nos últimos 5 minutos.
+            Ação imediata recomendada.
