@@ -351,6 +351,8 @@ service:
 | Collector atrás de Docker Compose com IP fixo `172.23.0.50` | Collector como Deployment K8s, Service ClusterIP |
 | Endpoint na `Instrumentation`: `http://172.23.0.50:4318` | `http://otel-collector.observability.svc.cluster.local:4318` |
 
+**Nota (POC local):** o Grafana **não** está na rede `kind_bridge`; o alert-agent usa `GRAFANA_URL=http://host.docker.internal:3000`.
+
 ### 5.3 Manter o Promtail alinhado com o contrato OTel
 
 O Promtail já existe na organização. Usando a config de `k8s/infra/promtail/configmap.yaml`

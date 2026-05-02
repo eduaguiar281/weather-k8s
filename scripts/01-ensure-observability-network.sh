@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Garante que a rede Docker externa usada pelo docker-compose.yml exista.
 #
-# O Compose declara a rede "kind_bridge" como external com nome
-# observability_observability. Loki, OpenTelemetry Collector e RabbitMQ usam IPs fixos
-# nessa rede (172.23.0.50 / 172.23.0.51 / 172.23.0.52). O script setup-kind-network.sh
-# assume o mesmo bloco CIDR (172.23.0.0/16) para regras de iptables no nó Kind.
+# O Compose declara a rede "kind_bridge" como external com nome observability_observability.
+# IPs típicos nessa rede: OTel Collector 172.23.0.50, Loki 172.23.0.51, RabbitMQ 172.23.0.52.
+# O Grafana só está na rede interna observability do Compose — não há IP na kind_bridge;
+# pods no Kind devem usar host.docker.internal:3000 na variável GRAFANA_URL ao chamar a API REST.
+# O script setup-kind-network.sh assume o mesmo bloco CIDR (172.23.0.0/16) para iptables no nó Kind.
 #
 # Uso (na raiz do repositório):
 #   ./scripts/ensure-observability-network.sh

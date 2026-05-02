@@ -7,11 +7,11 @@
 #   LLM_API_KEY    — chave de API do provider LLM (Anthropic ou OpenAI)
 #
 # Variáveis opcionais (têm padrão):
-#   GRAFANA_URL    — URL do Grafana acessível pelo cluster (padrão: http://172.23.0.51:3000)
+#   GRAFANA_URL    — URL do Grafana acessível pelo cluster (padrão: http://host.docker.internal:3000)
 #   LLM_PROVIDER   — anthropic | openai (padrão: anthropic)
 #   LLM_MODEL      — modelo a usar (padrão: claude-sonnet-4-20250514)
-#   LLM_BASE_URL   — URL base customizada para proxies/LM Studio (padrão: vazio)
-#   RABBITMQ_*     — broker e nomes de fila (padrões apontam para o RabbitMQ no Compose)
+#   LLM_BASE_URL   — URL base customizada (LM Studio em http://host.docker.internal:<porta>/v1 ; padrão: vazio)
+#   RABBITMQ_*     — broker e nomes de fila (padrão AMQP usa host.docker.internal:5672)
 #
 # Fluxo:
 #   1. Build da imagem Docker
@@ -46,12 +46,12 @@ fi
 
 # ── Valores com padrão ───────────────────────────────────────────────────────
 
-GRAFANA_URL="${GRAFANA_URL:-http://172.23.0.51:3000}"
+GRAFANA_URL="${GRAFANA_URL:-http://host.docker.internal:3000}"
 LLM_PROVIDER="${LLM_PROVIDER:-anthropic}"
 LLM_MODEL="${LLM_MODEL:-claude-sonnet-4-20250514}"
 LLM_BASE_URL="${LLM_BASE_URL:-}"
 
-RABBITMQ_URL="${RABBITMQ_URL:-amqp://guest:guest@172.23.0.52:5672/}"
+RABBITMQ_URL="${RABBITMQ_URL:-amqp://guest:guest@host.docker.internal:5672/}"
 RABBITMQ_EXCHANGE="${RABBITMQ_EXCHANGE:-weather.agent}"
 RABBITMQ_ANALYSIS_QUEUE="${RABBITMQ_ANALYSIS_QUEUE:-weather.agent.analysis}"
 RABBITMQ_ANALYSIS_ROUTING_KEY="${RABBITMQ_ANALYSIS_ROUTING_KEY:-analysis}"

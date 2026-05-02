@@ -262,6 +262,7 @@ class RabbitPublisher:
                 error=e,
                 analysis=analysis,
             )
+            raise
         except asyncio.TimeoutError as e:
             self._log_publish_failure(
                 event="publisher_timeout",
@@ -271,6 +272,7 @@ class RabbitPublisher:
                 error=e,
                 analysis=analysis,
             )
+            raise
         except Exception as e:
             self._log_publish_failure(
                 event="publisher_drop",
@@ -280,3 +282,4 @@ class RabbitPublisher:
                 error=e,
                 analysis=analysis,
             )
+            raise

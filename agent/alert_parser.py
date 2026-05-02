@@ -49,11 +49,17 @@ def parse_webhook(payload: dict) -> list[AlertContext]:
     contexts: list[AlertContext] = []
 
     for alert in alerts_raw:
+        raw_status = alert.get("status", "firing")
+        if isinstance(raw_status, str):
+            norm_state = raw_status.lower().strip() or "firing"
+        else:
+            norm_state = "firing"
+
         contexts.append(
             AlertContext(
                 title=alert.get("labels", {}).get("alertname", "")
                     or payload.get("title", "Alerta sem título"),
-                state=alert.get("status", "firing"),
+                state=norm_state,
                 message=alert.get("annotations", {}).get("summary", "")
                     or alert.get("annotations", {}).get("message", ""),
                 labels=alert.get("labels", {}),

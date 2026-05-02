@@ -13,7 +13,8 @@ data:
       filename: /run/promtail/positions.yaml
 
     clients:
-      - url: http://172.23.0.51:3100/loki/api/v1/push
+      # Loki mapeado no host (:3100). Evita IP fixo 172.23.0.51 da kind_bridge quando o stack muda.
+      - url: http://host.docker.internal:3100/loki/api/v1/push
 
     scrape_configs:
       - job_name: kubernetes-pods
@@ -47,14 +48,15 @@ data:
           # Deriva env a partir do namespace (uma linha — evita newline no valor do label)
           - template:
               source: env
-              template: '{{ if eq .namespace "weather-dev" }}dev{{ else if eq .namespace "weather" }}prod{{ else }}{{ end }}'
+              template: '{{ if eq .namespace "weather-dev" }}dev{{ else if eq .namespace "weather" }}prod{{ else if eq .namespace "weather-agent" }}dev{{ else }}{{ end }}'
 
           - labels:
               env:
 
-          # Alinha labels com resource OTel (Loki/Queries) — mesmo valor em dev e prod
+          # Alinha labels com resource OTel (Loki/Queries). Só weather / weather-dev são a API;
+          # weather.* englobava weather-agent e forçava weather.api nos logs do agente.
           - match:
-              selector: '{namespace=~"weather.*"}'
+              selector: '{namespace=~"weather|weather-dev"}'
               stages:
                 - template:
                     source: app_name
@@ -69,5 +71,24 @@ data:
                 - template:
                     source: deployment_environment
                     template: '{{ if eq .namespace "weather-dev" }}dev{{ else if eq .namespace "weather" }}prod{{ else }}{{ end }}'
+                - labels:
+                    deployment_environment:
+
+          - match:
+              selector: '{namespace="weather-agent"}'
+              stages:
+                - template:
+                    source: app_name
+                    template: weather.agent
+                - labels:
+                    app_name:
+                - template:
+                    source: service_name
+                    template: weather.agent
+                - labels:
+                    service_name:
+                - template:
+                    source: deployment_environment
+                    template: dev
                 - labels:
                     deployment_environment:

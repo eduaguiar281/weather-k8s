@@ -71,6 +71,7 @@ services:
       - "3100:3100"
     networks:
       observability:
+      # IPv4 estável na observability_observability (Compose: kind_bridge) para pods Kind falarem em :3100 (não é o Grafana).
       kind_bridge:
         ipv4_address: 172.23.0.51
     restart: unless-stopped
@@ -221,6 +222,7 @@ services:
       - prometheus
       - loki
       - jaeger
+    # Apenas observability interna ao Compose — não há IP na kind_bridge; pods Kind usam host.docker.internal:3000
     networks:
       - observability
     restart: unless-stopped

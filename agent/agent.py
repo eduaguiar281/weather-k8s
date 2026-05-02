@@ -122,6 +122,15 @@ class AlertAgent:
             if alert.state in ("firing", "pending"):
                 analysis = await self.analyze_firing_or_pending(alert)
                 await self._rabbit.publish_analysis(alert, analysis)
+                logger.info(
+                    "Analysis published to RabbitMQ",
+                    extra={
+                        "alert_title": alert.title,
+                        "queue": settings.rabbitmq_analysis_queue,
+                        "routing_key": settings.rabbitmq_analysis_routing_key,
+                        "analysis_chars": len(analysis),
+                    },
+                )
                 return
             logger.warning(
                 "Unknown alert state, skipping RabbitMQ publish",
@@ -184,3 +193,17 @@ class AlertAgent:
         ]
         response = await self.llm.ainvoke(messages)
         return response.content
+
+    async def chat_test(
+        self, user_message: str, system_instruction: str | None = None
+    ) -> str:
+        """Invoca a LLM com uma mensagem livre (útil para testes)."""
+        parts: list = []
+        if system_instruction:
+            parts.append(SystemMessage(content=system_instruction))
+        parts.append(HumanMessage(content=user_message))
+        response = await self.llm.ainvoke(parts)
+        content = response.content
+        if isinstance(content, str):
+            return content
+        return str(content)

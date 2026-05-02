@@ -73,6 +73,8 @@ na aplicação, usando infraestrutura Kubernetes como único ponto de configura�
                               └──────────────────────────────────────────────────┘
 ```
 
+**Rede `kind_bridge` (`observability_observability`):** apenas **OpenTelemetry Collector** (`172.23.0.50`), **Loki** (`172.23.0.51`) e **RabbitMQ** (`172.23.0.52`) recebem IPv4 ali. **Grafana** fica apenas na rede interna **`observability`** do Compose; pods no Kind que precisem da API REST do Grafana devem usar **`http://host.docker.internal:3000`** (porta **3000** publicada no host). **Promtail** no cluster deve enviar para o Loki em **`http://host.docker.internal:3100/loki/api/v1/push`** (ver `k8s/infra/promtail/configmap.yaml`).
+
 ### Como o Init Container funciona
 
 O **OpenTelemetry Operator** monitora os pods e, ao detectar a anotação

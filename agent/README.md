@@ -46,6 +46,16 @@ LLM_BASE_URL=http://host.docker.internal:1234/v1
 
 > `host.docker.internal` permite que o container acesse o LM Studio rodando no seu Mac.
 
+### Kubernetes / Kind (`deploy-agent.sh`)
+
+Variáveis usadas pelo script que gera `agent-secret` (exporte no shell ou mantenha no `~/.zshrc`):
+
+- `GRAFANA_URL=http://host.docker.internal:3000` — o Grafana **não** está na rede `kind_bridge`; use a porta exposta no host pelo Compose (**3000**).
+- `RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672/`
+- `LLM_BASE_URL=http://host.docker.internal:<porta>/v1` — caminho deve terminar em **`/v1`**, não `/api/v1` (compatível LangChain/OpenAI SDK).
+
+Veja também o README na raiz, seção «Deploy do agente».
+
 ## Setup
 
 ### 1. Configure as variáveis de ambiente

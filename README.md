@@ -162,16 +162,16 @@ Variáveis opcionais (têm padrão):
 
 | Variável | Padrão | Descrição |
 |----------|--------|-----------|
-| `GRAFANA_URL` | `http://172.23.0.51:3000` | URL do Grafana acessível pelo cluster |
+| `GRAFANA_URL` | `http://host.docker.internal:3000` | URL do Grafana a partir dos pods (**não use** um IP da `kind_bridge` — Grafana não está anexado a essa rede; veja observação abaixo) |
 | `LLM_PROVIDER` | `anthropic` | Provider: `anthropic` ou `openai` |
 | `LLM_MODEL` | `claude-sonnet-4-20250514` | Modelo a usar |
-| `LLM_BASE_URL` | _(vazio)_ | URL customizada para proxies/LM Studio |
-| `RABBITMQ_URL` | `amqp://guest:guest@172.23.0.52:5672/` | Broker RabbitMQ na rede `kind_bridge` (Compose) |
+| `LLM_BASE_URL` | _(vazio)_ | Proxies/OpenAI-compat: **LM Studio** → `http://host.docker.internal:<porta>/v1` (**não** `/api/v1`) |
+| `RABBITMQ_URL` | `amqp://guest:guest@host.docker.internal:5672/` | AMQP usando a porta publicada no host (Compose mapeia `5672`) |
 | `RABBITMQ_EXCHANGE` | `weather.agent` | Exchange topic principal |
 | `RABBITMQ_ANALYSIS_QUEUE` / `RABBITMQ_ANALYSIS_ROUTING_KEY` | `weather.agent.analysis` / `analysis` | Fila de análises (LLM) |
 | `RABBITMQ_RESOLVED_QUEUE` / `RABBITMQ_RESOLVED_ROUTING_KEY` | `weather.agent.resolved` / `resolved` | Fila de alertas resolvidos (sem LLM) |
 
-> O IP `172.23.0.51` é o Grafana e `172.23.0.52` é o RabbitMQ na rede `kind_bridge` compartilhada com o Kind. Confira com `docker compose ps` se necessário.
+> **Redes Docker × Kind:** Na rede externa `observability_observability` (referenciada pelo Compose como `kind_bridge`), ficam apenas **OpenTelemetry Collector** (`172.23.0.50`), **Loki** (`172.23.0.51`) e **RabbitMQ** (`172.23.0.52`). **Grafana não tem IP na `kind_bridge`** — ele está só na rede interna `observability`; por isso o agente deve usar **`http://host.docker.internal:3000`** ou outro nome que alcance o host onde o Grafana expõe a porta **3000**. Em Linux pode ser preciso garantir que `host.docker.internal` existe (Compose já usa `host-gateway` no Alertmanager como referência).
 
 **Webhook e filas:** o `POST /webhook` responde **202 Accepted** com `{"status":"accepted"}` e processa em background: alertas **firing/pending** geram mensagem JSON na fila `weather.agent.analysis` (com texto da LLM); **resolved** vai para `weather.agent.resolved` (sem LLM). Suba o stack com `docker compose up -d` para ter o RabbitMQ (AMQP `5672`, Management **http://localhost:15672**, usuário/senha `guest`/`guest`).
 
@@ -368,7 +368,7 @@ Após criar ou editar o arquivo, **reinicie o Cursor** para que os servidores MC
 |---------|-----------|
 | `kind/cluster-config.yaml` | Configuração do cluster Kind (um control-plane) |
 | `docker-compose.yml` | Stack de observabilidade + Postgres + RabbitMQ (Prometheus, Loki, Grafana, etc.) |
-| `rabbitmq/` | Config do broker RabbitMQ (AMQP na rede `kind_bridge` em `172.23.0.52`) |
+| `rabbitmq/` | Config do broker RabbitMQ (`kind_bridge`: `172.23.0.52`; no host também `localhost:5672`) |
 | `scripts/01-ensure-observability-network.sh` | Cria a rede Docker externa antes do `docker compose up` |
 | `scripts/02-bootstrap-kind-argocd.sh` | Bootstrap: Kind + cert-manager + OTel Operator + Argo CD |
 | `scripts/03-apply-argocd-ssh-secret.sh` | Cria o Secret SSH no Argo CD a partir de `~/.ssh/argocd-weather-k8s` |
