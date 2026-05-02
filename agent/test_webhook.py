@@ -2,6 +2,9 @@
 """
 Simula um webhook do Grafana Alerting para testar o agente localmente.
 Execute com: python test_webhook.py
+
+Com agente no Kind + port-forward do deploy: use http://localhost:9093/webhook
+(ver scripts/deploy-agent.sh). Com uvicorn local na porta padrão: 8000.
 """
 import httpx
 import json
@@ -52,8 +55,13 @@ def test():
     print(f"Status: {r.status_code}\n")
     try:
         data = r.json()
-        print("=== ANÁLISE GERADA ===\n")
-        print(data.get("analysis", json.dumps(data, indent=2, ensure_ascii=False)))
+        print("=== RESPOSTA DO AGENTE ===\n")
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        if r.status_code == 202:
+            print(
+                "\n(202 Accepted) O processamento é assíncrono; a análise LLM vai para "
+                "a fila RabbitMQ `weather.agent.analysis` quando o alerta está firing/pending."
+            )
     except Exception:
         print(r.text)
 

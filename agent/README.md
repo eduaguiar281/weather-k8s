@@ -8,8 +8,9 @@ com uma LLM (via LangChain) para ajudar o desenvolvedor a identificar a causa.
 
 ```
 agent/
-├── main.py              # FastAPI — recebe o webhook
+├── main.py              # FastAPI — recebe o webhook (202 + background)
 ├── agent.py             # Orquestrador principal + factory LangChain
+├── rabbit_publisher.py  # RabbitMQ (filas analysis / resolved)
 ├── config.py            # Configuração via variáveis de ambiente
 ├── grafana_client.py    # API REST do Grafana
 ├── alert_parser.py      # Parser do payload do webhook
@@ -67,31 +68,22 @@ uv sync
 uv run uvicorn main:app --reload
 ```
 
-### 3. Suba via Docker Compose
+### 3. RabbitMQ (local)
 
-O serviço já está declarado no `docker-compose.yml` da raiz do projeto:
+O deploy em produção usa o broker na stack Docker da raiz (`rabbitmq` no
+`docker-compose.yml`, AMQP em `localhost:5672`). Para desenvolvimento local com
+`uvicorn`, aponte `RABBITMQ_URL` para `amqp://guest:guest@localhost:5672/` (subindo
+o Compose antes: `docker compose up -d` na raiz do repositório).
 
-```bash
-# Sobe apenas o agente (Grafana e demais serviços já devem estar rodando)
-docker compose up alert-agent --build
-
-# Ou sobe tudo junto
-docker compose up --build
-```
-
-As variáveis de ambiente podem ser passadas no `.env` da raiz do projeto ou
-diretamente na linha de comando:
-
-```bash
-LLM_PROVIDER=openai LLM_MODEL=gpt-4o LLM_API_KEY=sk-... docker compose up alert-agent --build
-```
+O agente em si é implantado no **Kubernetes** (Kind) — ver README da raiz, seção
+“Deploy do agente”.
 
 ### 4. Configure o webhook no Grafana
 
 1. Acesse **Alerting → Contact points → New contact point**
 2. Tipo: **Webhook**
 3. URL: `http://alert-agent:8000/webhook` (dentro do Docker)
-   ou `http://localhost:8001/webhook` (se testar de fora)
+   ou `http://localhost:9093/webhook` (fora do cluster: port-forward do deploy na porta **9093**)
 4. Salve e adicione ao seu **Notification policy**
 
 ### 5. Teste localmente
@@ -102,10 +94,10 @@ uv run python test_webhook.py
 
 ## Endpoints
 
-| Método | Path       | Descrição                        |
-|--------|------------|----------------------------------|
-| GET    | /health    | Health check                     |
-| POST   | /webhook   | Recebe alertas do Grafana        |
+| Método | Path       | Descrição |
+|--------|------------|-----------|
+| GET    | /health    | Health check |
+| POST   | /webhook   | Recebe alertas do Grafana; responde **202 Accepted** (`{"status":"accepted"}`) e publica em background no RabbitMQ (`weather.agent.analysis` ou `weather.agent.resolved`) |
 
 ## Variáveis de ambiente
 
@@ -119,3 +111,9 @@ uv run python test_webhook.py
 | `LLM_BASE_URL`      | URL base customizada (LM Studio, proxies OpenAI-compat)| vazio (usa padrão do provider)|
 | `METRICS_LOOKBACK`  | Janela de tempo das métricas (segundos)               | `900`                       |
 | `LOGS_LOOKBACK`     | Janela de tempo dos logs                               | `15m`                       |
+| `RABBITMQ_ENABLED`  | Liga/desliga publicação AMQP                           | `true`                      |
+| `RABBITMQ_URL`      | URL AMQP (`guest`/`guest` no dev)                      | `amqp://guest:guest@rabbitmq:5672/` |
+| `RABBITMQ_EXCHANGE` | Exchange topic principal                               | `weather.agent`             |
+| `RABBITMQ_ANALYSIS_QUEUE` / `RABBITMQ_ANALYSIS_ROUTING_KEY` | Fila / routing de análises LLM | `weather.agent.analysis` / `analysis` |
+| `RABBITMQ_RESOLVED_QUEUE` / `RABBITMQ_RESOLVED_ROUTING_KEY` | Fila / routing de resolved      | `weather.agent.resolved` / `resolved` |
+| `RABBITMQ_PUBLISH_TIMEOUT_SECONDS` | Timeout do publish com confirms          | `5.0`                       |

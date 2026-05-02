@@ -35,7 +35,10 @@ class ContextCollector:
     async def collect_metrics(self, alert: AlertContext) -> dict:
         uid = await self._get_prom_uid()
         if not uid:
-            logger.warning("Datasource Prometheus não encontrado.")
+            logger.warning(
+                "Prometheus datasource not found",
+                extra={"datasource": "prometheus"},
+            )
             return {}
 
         service = alert.service
@@ -64,7 +67,10 @@ class ContextCollector:
                 data = await self.client.query_prometheus_instant(expr, uid)
                 results[name] = _simplify_prometheus(data)
             except Exception as e:
-                logger.warning(f"Query Prometheus falhou [{name}]: {e}")
+                logger.warning(
+                    "Prometheus query failed",
+                    extra={"query_name": name, "error": str(e)},
+                )
                 results[name] = {"error": str(e)}
 
         return results
@@ -76,7 +82,10 @@ class ContextCollector:
     async def collect_logs(self, alert: AlertContext) -> dict:
         uid = await self._get_loki_uid()
         if not uid:
-            logger.warning("Datasource Loki não encontrado.")
+            logger.warning(
+                "Loki datasource not found",
+                extra={"datasource": "loki"},
+            )
             return {}
 
         service = alert.service
@@ -100,7 +109,10 @@ class ContextCollector:
                 data = await self.client.query_loki(query, uid, limit=50)
                 results[name] = _simplify_loki(data)
             except Exception as e:
-                logger.warning(f"Query Loki falhou [{name}]: {e}")
+                logger.warning(
+                    "Loki query failed",
+                    extra={"query_name": name, "error": str(e)},
+                )
                 results[name] = []
 
         return results
@@ -128,7 +140,10 @@ class ContextCollector:
                     })
             return related[:10]
         except Exception as e:
-            logger.warning(f"Falha ao buscar alertas relacionados: {e}")
+            logger.warning(
+                "Failed to fetch related alerts",
+                extra={"error": str(e)},
+            )
             return []
 
 

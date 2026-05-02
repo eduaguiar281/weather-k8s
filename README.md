@@ -166,8 +166,33 @@ Variáveis opcionais (têm padrão):
 | `LLM_PROVIDER` | `anthropic` | Provider: `anthropic` ou `openai` |
 | `LLM_MODEL` | `claude-sonnet-4-20250514` | Modelo a usar |
 | `LLM_BASE_URL` | _(vazio)_ | URL customizada para proxies/LM Studio |
+| `RABBITMQ_URL` | `amqp://guest:guest@172.23.0.52:5672/` | Broker RabbitMQ na rede `kind_bridge` (Compose) |
+| `RABBITMQ_EXCHANGE` | `weather.agent` | Exchange topic principal |
+| `RABBITMQ_ANALYSIS_QUEUE` / `RABBITMQ_ANALYSIS_ROUTING_KEY` | `weather.agent.analysis` / `analysis` | Fila de análises (LLM) |
+| `RABBITMQ_RESOLVED_QUEUE` / `RABBITMQ_RESOLVED_ROUTING_KEY` | `weather.agent.resolved` / `resolved` | Fila de alertas resolvidos (sem LLM) |
 
-> O IP `172.23.0.51` é o endereço do Grafana na rede `kind_bridge` compartilhada com o cluster Kind. Verifique em `docker compose ps` se necessário.
+> O IP `172.23.0.51` é o Grafana e `172.23.0.52` é o RabbitMQ na rede `kind_bridge` compartilhada com o Kind. Confira com `docker compose ps` se necessário.
+
+**Webhook e filas:** o `POST /webhook` responde **202 Accepted** com `{"status":"accepted"}` e processa em background: alertas **firing/pending** geram mensagem JSON na fila `weather.agent.analysis` (com texto da LLM); **resolved** vai para `weather.agent.resolved` (sem LLM). Suba o stack com `docker compose up -d` para ter o RabbitMQ (AMQP `5672`, Management **http://localhost:15672**, usuário/senha `guest`/`guest`).
+
+Exemplo de consumer local (`aio-pika`):
+
+```python
+import asyncio, aio_pika
+
+async def drain(queue_name: str):
+    conn = await aio_pika.connect_robust("amqp://guest:guest@localhost:5672/")
+    async with conn:
+        ch = await conn.channel()
+        q = await ch.declare_queue(queue_name, durable=True)
+        async with q.iterator() as it:
+            async for msg in it:
+                async with msg.process():
+                    print(msg.body.decode())
+
+asyncio.run(drain("weather.agent.analysis"))
+# asyncio.run(drain("weather.agent.resolved"))
+```
 
 **8.2 — Execute o deploy:**
 
@@ -183,8 +208,16 @@ O script realiza: build da imagem → `kind load` → criação do Secret no clu
 
 ```bash
 kubectl get pods -n weather-agent
-curl http://localhost:8001/health
+curl http://localhost:9093/health
 ```
+
+**8.3a — Alertas Prometheus → Alertmanager → agente**
+
+As regras em `prometheus/rules/` disparam no **Prometheus** e as notificações saem pelo **Alertmanager** (`alertmanager/alertmanager.yml`), com webhook para `http://host.docker.internal:9093/webhook` (porta **9093** no host: mesmo port-forward do agente no passo 8.2 e o script `scripts/apps/map-ports.sh`). O serviço `alertmanager` no Compose inclui `extra_hosts` para `host.docker.internal` funcionar também no Linux.
+
+A UI do Alertmanager no host está em **http://localhost:9094** (no Compose, `9094:9093`), para a porta **9093** do host ficar reservada ao webhook do agente.
+
+Após alterar o YAML do Alertmanager: `docker compose up -d --force-recreate alertmanager`.
 
 **8.4 — Configure o webhook no Grafana:**
 
@@ -192,7 +225,7 @@ curl http://localhost:8001/health
 2. Vá em **Alerting → Contact points → New contact point**
 3. Tipo: **Webhook**
 4. URL: `http://alert-agent.weather-agent.svc.cluster.local/webhook` (interno ao cluster)
-   ou `http://localhost:8001/webhook` (via port-forward)
+   ou `http://localhost:9093/webhook` (via port-forward na porta **9093**)
 5. Salve e adicione ao seu **Notification policy**
 
 **Para fazer deploy de tudo de uma vez:**
@@ -334,7 +367,8 @@ Após criar ou editar o arquivo, **reinicie o Cursor** para que os servidores MC
 | Caminho | Descrição |
 |---------|-----------|
 | `kind/cluster-config.yaml` | Configuração do cluster Kind (um control-plane) |
-| `docker-compose.yml` | Stack de observabilidade + Postgres (Prometheus, Loki, Grafana, etc.) |
+| `docker-compose.yml` | Stack de observabilidade + Postgres + RabbitMQ (Prometheus, Loki, Grafana, etc.) |
+| `rabbitmq/` | Config do broker RabbitMQ (AMQP na rede `kind_bridge` em `172.23.0.52`) |
 | `scripts/01-ensure-observability-network.sh` | Cria a rede Docker externa antes do `docker compose up` |
 | `scripts/02-bootstrap-kind-argocd.sh` | Bootstrap: Kind + cert-manager + OTel Operator + Argo CD |
 | `scripts/03-apply-argocd-ssh-secret.sh` | Cria o Secret SSH no Argo CD a partir de `~/.ssh/argocd-weather-k8s` |

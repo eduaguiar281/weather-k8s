@@ -7,6 +7,7 @@ from grafana_client import GrafanaClient
 from alert_parser import parse_webhook, AlertContext
 from context_collector import ContextCollector
 from analysis import SYSTEM_PROMPT, build_user_prompt
+from rabbit_publisher import RabbitPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -51,29 +52,91 @@ class AlertAgent:
         self.grafana = GrafanaClient()
         self.collector = ContextCollector(self.grafana)
         self.llm = _build_llm(settings)
+        self._rabbit = RabbitPublisher()
         logger.info(
-            f"AgenteLLM iniciado — provider={settings.llm_provider} "
-            f"model={settings.llm_model}"
+            "Alert agent LLM started",
+            extra={
+                "llm_provider": settings.llm_provider,
+                "llm_model": settings.llm_model,
+            },
         )
+
+    async def start(self) -> None:
+        await self._rabbit.start()
+
+    async def stop(self) -> None:
+        await self._rabbit.stop()
+
+    async def analyze_firing_or_pending(self, alert: AlertContext) -> str:
+        """Coleta contexto + LLM (não usar para resolved)."""
+        metrics, logs, related = await self._collect_context(alert)
+        analysis = await self._analyze(alert, metrics, logs, related)
+        logger.info(
+            "Analysis generated",
+            extra={"alert_title": alert.title},
+        )
+        return analysis
 
     async def handle(self, payload: dict) -> str:
         alerts = parse_webhook(payload)
 
         if not alerts:
-            logger.warning("Webhook recebido sem alertas válidos.")
+            logger.warning(
+                "Webhook received with no valid alerts",
+                extra={"event": "webhook_no_valid_alerts"},
+            )
             return "Nenhum alerta válido encontrado no payload."
 
         alert = alerts[0]
-        logger.info(f"Processando alerta: {alert.title} [{alert.state}]")
+        logger.info(
+            "Processing alert",
+            extra={"alert_title": alert.title, "alert_state": alert.state},
+        )
 
         if alert.state == "resolved":
             return f"Alerta '{alert.title}' resolvido — nenhuma análise necessária."
 
-        metrics, logs, related = await self._collect_context(alert)
-        analysis = await self._analyze(alert, metrics, logs, related)
+        return await self.analyze_firing_or_pending(alert)
 
-        logger.info(f"Análise gerada para: {alert.title}")
-        return analysis
+    async def handle_and_publish(self, payload: dict) -> None:
+        """Processamento em background: publica em analysis ou resolved no RabbitMQ."""
+        alerts = parse_webhook(payload)
+
+        if not alerts:
+            logger.warning(
+                "Webhook received with no valid alerts",
+                extra={"event": "webhook_no_valid_alerts"},
+            )
+            return
+
+        alert = alerts[0]
+        logger.info(
+            "Processing alert (background)",
+            extra={"alert_title": alert.title, "alert_state": alert.state},
+        )
+
+        try:
+            if alert.state == "resolved":
+                await self._rabbit.publish_resolved(alert)
+                return
+            if alert.state in ("firing", "pending"):
+                analysis = await self.analyze_firing_or_pending(alert)
+                await self._rabbit.publish_analysis(alert, analysis)
+                return
+            logger.warning(
+                "Unknown alert state, skipping RabbitMQ publish",
+                extra={"alert_title": alert.title, "alert_state": alert.state},
+            )
+        except Exception as e:
+            logger.error(
+                "Background handle_and_publish failed",
+                extra={
+                    "alert_title": alert.title,
+                    "alert_state": alert.state,
+                    "error": str(e),
+                    "error_class": type(e).__name__,
+                },
+            )
 
     async def _collect_context(
         self, alert: AlertContext
@@ -87,13 +150,22 @@ class AlertAgent:
         )
 
         if isinstance(metrics, Exception):
-            logger.error(f"Falha ao coletar métricas: {metrics}")
+            logger.error(
+                "Failed to collect metrics",
+                extra={"error": str(metrics)},
+            )
             metrics = {}
         if isinstance(logs, Exception):
-            logger.error(f"Falha ao coletar logs: {logs}")
+            logger.error(
+                "Failed to collect logs",
+                extra={"error": str(logs)},
+            )
             logs = {}
         if isinstance(related, Exception):
-            logger.error(f"Falha ao buscar alertas relacionados: {related}")
+            logger.error(
+                "Failed to fetch related alerts",
+                extra={"error": str(related)},
+            )
             related = []
 
         return metrics, logs, related

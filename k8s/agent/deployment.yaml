@@ -66,3 +66,39 @@ spec:
                   name: agent-secret
                   key: LLM_BASE_URL
                   optional: true
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: RABBITMQ_URL
+                  optional: true
+            - name: RABBITMQ_EXCHANGE
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: RABBITMQ_EXCHANGE
+                  optional: true
+            - name: RABBITMQ_ANALYSIS_QUEUE
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: RABBITMQ_ANALYSIS_QUEUE
+                  optional: true
+            - name: RABBITMQ_ANALYSIS_ROUTING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: RABBITMQ_ANALYSIS_ROUTING_KEY
+                  optional: true
+            - name: RABBITMQ_RESOLVED_QUEUE
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: RABBITMQ_RESOLVED_QUEUE
+                  optional: true
+            - name: RABBITMQ_RESOLVED_ROUTING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agent-secret
+                  key: RABBITMQ_RESOLVED_ROUTING_KEY
+                  optional: true

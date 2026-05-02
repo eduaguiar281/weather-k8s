@@ -47,8 +47,12 @@ services:
     container_name: alertmanager
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    # Host 9094 → container 9093: a porta 9093 no host fica para o webhook do alert-agent (port-forward Kind)
     ports:
-      - "9093:9093"
+      - "9094:9093"
+    # Permite http://host.docker.internal:9093 no alertmanager.yml (webhook do agente via port-forward no host)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - observability
     restart: unless-stopped
@@ -176,6 +180,30 @@ services:
   # ────────────────────────────────────────────
   # VISUALIZAÇÃO — Grafana
   # ────────────────────────────────────────────
+  # ────────────────────────────────────────────
+  # FILAS — RabbitMQ (AMQP + Management UI)
+  # ────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI
+    networks:
+      observability:
+      kind_bridge:
+        ipv4_address: 172.23.0.52
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
   grafana:
     image: grafana/grafana:10.4.2
     container_name: grafana
@@ -205,6 +233,7 @@ volumes:
   grafana_data:
   loki_data:
   postgres_data:
+  rabbitmq_data:
 
 # ────────────────────────────────────────────
 # REDE

@@ -2,8 +2,8 @@
 # Garante que a rede Docker externa usada pelo docker-compose.yml exista.
 #
 # O Compose declara a rede "kind_bridge" como external com nome
-# observability_observability. Loki e o OpenTelemetry Collector usam IPs fixos
-# nessa rede (172.23.0.50 / 172.23.0.51). O script setup-kind-network.sh
+# observability_observability. Loki, OpenTelemetry Collector e RabbitMQ usam IPs fixos
+# nessa rede (172.23.0.50 / 172.23.0.51 / 172.23.0.52). O script setup-kind-network.sh
 # assume o mesmo bloco CIDR (172.23.0.0/16) para regras de iptables no nó Kind.
 #
 # Uso (na raiz do repositório):

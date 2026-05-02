@@ -11,6 +11,7 @@
 #   LLM_PROVIDER   — anthropic | openai (padrão: anthropic)
 #   LLM_MODEL      — modelo a usar (padrão: claude-sonnet-4-20250514)
 #   LLM_BASE_URL   — URL base customizada para proxies/LM Studio (padrão: vazio)
+#   RABBITMQ_*     — broker e nomes de fila (padrões apontam para o RabbitMQ no Compose)
 #
 # Fluxo:
 #   1. Build da imagem Docker
@@ -18,6 +19,7 @@
 #   3. Cria/atualiza o Secret com credenciais (não versionado)
 #   4. Aplica o Application ArgoCD
 #   5. Aguarda sync do ArgoCD e rollout do deployment
+#   6. Port-forward na porta 9093 (webhook/health no host; Alertmanager UI no host está em 9094 — docker-compose)
 
 set -euo pipefail
 
@@ -49,6 +51,13 @@ LLM_PROVIDER="${LLM_PROVIDER:-anthropic}"
 LLM_MODEL="${LLM_MODEL:-claude-sonnet-4-20250514}"
 LLM_BASE_URL="${LLM_BASE_URL:-}"
 
+RABBITMQ_URL="${RABBITMQ_URL:-amqp://guest:guest@172.23.0.52:5672/}"
+RABBITMQ_EXCHANGE="${RABBITMQ_EXCHANGE:-weather.agent}"
+RABBITMQ_ANALYSIS_QUEUE="${RABBITMQ_ANALYSIS_QUEUE:-weather.agent.analysis}"
+RABBITMQ_ANALYSIS_ROUTING_KEY="${RABBITMQ_ANALYSIS_ROUTING_KEY:-analysis}"
+RABBITMQ_RESOLVED_QUEUE="${RABBITMQ_RESOLVED_QUEUE:-weather.agent.resolved}"
+RABBITMQ_RESOLVED_ROUTING_KEY="${RABBITMQ_RESOLVED_ROUTING_KEY:-resolved}"
+
 # ── Build ─────────────────────────────────────────────────────────────────────
 
 echo "==> [AGENT] Build da imagem Docker..."
@@ -70,6 +79,12 @@ kubectl create secret generic agent-secret \
   --from-literal=LLM_MODEL="$LLM_MODEL" \
   --from-literal=LLM_API_KEY="$LLM_API_KEY" \
   --from-literal=LLM_BASE_URL="$LLM_BASE_URL" \
+  --from-literal=RABBITMQ_URL="$RABBITMQ_URL" \
+  --from-literal=RABBITMQ_EXCHANGE="$RABBITMQ_EXCHANGE" \
+  --from-literal=RABBITMQ_ANALYSIS_QUEUE="$RABBITMQ_ANALYSIS_QUEUE" \
+  --from-literal=RABBITMQ_ANALYSIS_ROUTING_KEY="$RABBITMQ_ANALYSIS_ROUTING_KEY" \
+  --from-literal=RABBITMQ_RESOLVED_QUEUE="$RABBITMQ_RESOLVED_QUEUE" \
+  --from-literal=RABBITMQ_RESOLVED_ROUTING_KEY="$RABBITMQ_RESOLVED_ROUTING_KEY" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # ── ArgoCD Application ────────────────────────────────────────────────────────
@@ -104,9 +119,9 @@ echo ""
 echo "==> Restaurando port-forward para o agente..."
 pkill -f "kubectl port-forward svc/alert-agent -n $NAMESPACE" 2>/dev/null || true
 sleep 1
-kubectl port-forward svc/alert-agent -n "$NAMESPACE" 8001:80 &>/dev/null &
+kubectl port-forward svc/alert-agent -n "$NAMESPACE" 9093:80 &>/dev/null &
 
 echo ""
 echo "✓ Deploy do agente concluído!"
-echo "  GET  http://localhost:8001/health"
-echo "  POST http://localhost:8001/webhook"
+echo "  GET  http://localhost:9093/health"
+echo "  POST http://localhost:9093/webhook"

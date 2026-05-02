@@ -2,12 +2,18 @@
 # Gera tráfego para a Weather API: requisições corretas, erros 400 e exceções.
 #
 # Uso:
-#   ./load-test.sh --iterations <N> --env <dev|prod> [--sleep <segundos>]
+#   ./load-test.sh --iterations <N> --env <dev|prod> [--sleep <segundos>] [--city-mode <modo>]
+#
+# --city-mode:
+#   skewed     — pesos aleatórios por iteração + 3 sorteios com reposição (padrão: tráfego desigual)
+#   independent — 3 cidades por iteração, cada uma uniforme com reposição (mais variância que distinct)
+#   distinct   — 3 cidades distintas por iteração (comportamento antigo; tende a ~20% cada com muitas iterações)
 #
 # Exemplos:
 #   ./load-test.sh --iterations 10 --env dev
 #   ./load-test.sh --iterations 5 --env prod --sleep 1
 #   ./load-test.sh --iterations 10 --env dev -s 0.2
+#   ./load-test.sh -i 100 -e dev --city-mode distinct
 
 set -e
 
@@ -15,6 +21,8 @@ set -e
 ITERATIONS=5
 ENV="dev"
 SLEEP=0.5
+# skewed | independent | distinct
+CITY_MODE="skewed"
 
 # ── Parse args ──────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -22,8 +30,9 @@ while [[ $# -gt 0 ]]; do
     --iterations|-i) ITERATIONS="$2"; shift 2 ;;
     --env|-e)        ENV="$2";        shift 2 ;;
     --sleep|-s)      SLEEP="$2";      shift 2 ;;
+    --city-mode)     CITY_MODE="$2";  shift 2 ;;
     *)
-      echo "Uso: $0 --iterations <N> --env <dev|prod> [--sleep <segundos>]"
+      echo "Uso: $0 --iterations <N> --env <dev|prod> [--sleep <segundos>] [--city-mode skewed|independent|distinct]"
       exit 1
       ;;
   esac
@@ -35,6 +44,14 @@ case "$ENV" in
   prod) PORT=9091 ;;
   *)
     echo "Erro: --env deve ser 'dev' ou 'prod' (recebido: '$ENV')"
+    exit 1
+    ;;
+esac
+
+case "$CITY_MODE" in
+  skewed|independent|distinct) ;;
+  *)
+    echo "Erro: --city-mode deve ser 'skewed', 'independent' ou 'distinct' (recebido: '$CITY_MODE')"
     exit 1
     ;;
 esac
@@ -61,7 +78,7 @@ DATES=(
 )
 
 # ── Seleciona 3 índices distintos aleatórios (Fisher-Yates) ──
-pick_3_indices() {
+pick_3_indices_distinct() {
   local indices=(0 1 2 3 4)
   for i in 4 3 2 1; do
     j=$((RANDOM % (i + 1)))
@@ -70,6 +87,46 @@ pick_3_indices() {
     indices[$j]=$tmp
   done
   echo "${indices[0]} ${indices[1]} ${indices[2]}"
+}
+
+# ── Três cidades independentes (com reposição), uniforme ──────
+pick_3_indices_independent() {
+  local n=${#CITIES_NAME[@]}
+  echo "$((RANDOM % n)) $((RANDOM % n)) $((RANDOM % n))"
+}
+
+# ── Três sorteios ponderados: pesos aleatórios por chamada ────
+#    Produz picos/vales fortes no relatório (não converge a 20% cada).
+pick_weighted_city_index() {
+  local w0 w1 w2 w3 w4 sum r acc
+  w0=$((RANDOM + 1))
+  w1=$((RANDOM + 1))
+  w2=$((RANDOM + 1))
+  w3=$((RANDOM + 1))
+  w4=$((RANDOM + 1))
+  sum=$((w0 + w1 + w2 + w3 + w4))
+  r=$((RANDOM % sum))
+  acc=$w0
+  if (( r < acc )); then echo 0; return; fi
+  acc=$((acc + w1))
+  if (( r < acc )); then echo 1; return; fi
+  acc=$((acc + w2))
+  if (( r < acc )); then echo 2; return; fi
+  acc=$((acc + w3))
+  if (( r < acc )); then echo 3; return; fi
+  echo 4
+}
+
+pick_3_indices_skewed() {
+  echo "$(pick_weighted_city_index) $(pick_weighted_city_index) $(pick_weighted_city_index)"
+}
+
+pick_city_indices_for_iteration() {
+  case "$CITY_MODE" in
+    distinct)     pick_3_indices_distinct ;;
+    independent)  pick_3_indices_independent ;;
+    skewed)       pick_3_indices_skewed ;;
+  esac
 }
 
 # ── Retorna URL de consulta com data opcional aleatória ──────
@@ -117,7 +174,7 @@ BAD_REQ_400="${BASE_URL}/weather?city=${BAD_CITY}"
 echo ""
 echo "========================================"
 echo "  Load Test — env: ${ENV}  porta: ${PORT}"
-echo "  Iterações: ${ITERATIONS}  sleep: ${SLEEP}s"
+echo "  Iterações: ${ITERATIONS}  sleep: ${SLEEP}s  city-mode: ${CITY_MODE}"
 echo "========================================"
 
 for ((iter=1; iter<=ITERATIONS; iter++)); do
@@ -128,8 +185,8 @@ for ((iter=1; iter<=ITERATIONS; iter++)); do
   do_request "GET /live"  "${BASE_URL}/live"
   do_request "GET /hello" "${BASE_URL}/hello"
 
-  # 3 cidades aleatórias distintas por iteração
-  read -r idx0 idx1 idx2 <<< "$(pick_3_indices)"
+  # 3 cidades conforme --city-mode (skewed / independent / distinct)
+  read -r idx0 idx1 idx2 <<< "$(pick_city_indices_for_iteration)"
   for idx in $idx0 $idx1 $idx2; do
     city_name="${CITIES_NAME[$idx]}"
     city_url="${CITIES_URL[$idx]}"
