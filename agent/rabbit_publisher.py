@@ -167,6 +167,8 @@ class RabbitPublisher:
                 "service": alert.service,
                 "namespace": alert.namespace,
                 "fingerprint": alert.fingerprint,
+                "starts_at": alert.starts_at,
+                "ends_at": alert.ends_at,
             },
             "analysis": analysis,
         }
@@ -216,6 +218,7 @@ class RabbitPublisher:
                 "namespace": alert.namespace,
                 "fingerprint": alert.fingerprint,
                 "starts_at": alert.starts_at,
+                "ends_at": alert.ends_at,
             },
         }
         await self._publish_json(

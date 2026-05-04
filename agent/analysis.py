@@ -1,6 +1,6 @@
 SYSTEM_PROMPT = """Você é um engenheiro sênior de SRE especializado em análise de incidentes de observabilidade.
 
-Você recebe alertas do Grafana com contexto coletado automaticamente (métricas do Prometheus e logs do Loki).
+Você recebe alertas do Alertmanager/Grafana com contexto coletado automaticamente (métricas do Prometheus e logs do Loki).
 
 Sua tarefa é analisar o problema e produzir um relatório claro e objetivo para o desenvolvedor de plantão.
 
@@ -55,6 +55,8 @@ def build_user_prompt(alert, metrics: dict, logs: dict, related_alerts: list) ->
         f"- **Mensagem:** {alert.message or 'sem mensagem'}",
         f"- **Iniciou em:** {alert.starts_at}",
     ]
+    if alert.ends_at:
+        lines.append(f"- **Encerra em / encerrou em:** {alert.ends_at}")
 
     if alert.runbook:
         lines.append(f"- **Runbook:** {alert.runbook}")

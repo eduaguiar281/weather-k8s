@@ -57,13 +57,19 @@ async def health():
 @app.post("/webhook", status_code=202)
 async def receive_alert(request: Request, background_tasks: BackgroundTasks):
     payload = await request.json()
+    truncated = payload.get("truncatedAlerts", 0)
     logger.info(
         "POST /webhook received",
         extra={
             "env": ENV,
+            "receiver": payload.get("receiver"),
+            "notify_status": payload.get("status"),
+            "external_url": payload.get("externalURL"),
+            "group_key": payload.get("groupKey"),
+            "version": payload.get("version"),
+            "truncated_alerts": truncated if isinstance(truncated, int) else 0,
             "title": payload.get("title"),
-            "status": payload.get("status"),
-            "alerts_count": len(payload.get("alerts") or []),
+            "alerts_count": len(payload.get("alerts") or []) if isinstance(payload.get("alerts"), list) else 1,
         },
     )
 
