@@ -27,3 +27,24 @@ scrape_configs:
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['node-exporter:9100']
+
+# BEGIN infra-kind-metrics
+  # Métricas de objetos Kubernetes (deployments, pods, restarts, etc.)
+  - job_name: 'kube-state-metrics-kind'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['local-control-plane:30081']
+
+  # Métricas de uso real de CPU/memória por container/pod
+  - job_name: 'cadvisor-kind'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['local-control-plane:30080']
+    metric_relabel_configs:
+      - source_labels: [container_label_io_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [container_label_io_kubernetes_pod_namespace]
+        target_label: namespace
+      - source_labels: [container_label_io_kubernetes_container_name]
+        target_label: container
+# END infra-kind-metrics
