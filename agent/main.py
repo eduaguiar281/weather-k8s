@@ -2,12 +2,14 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from openai import APIConnectionError
 from pydantic import BaseModel, Field
 from pythonjsonlogger import jsonlogger
 
 from agent import AlertAgent
+from config import settings
 
 # ── Logging (JSON, alinhado ao serviço app) ─────────────────
 _handler = logging.StreamHandler()
@@ -90,5 +92,23 @@ async def llm_test(body: LLMTestRequest):
         "POST /llm/test",
         extra={"message_chars": len(body.message), "has_system": body.system is not None},
     )
-    reply = await agent.chat_test(body.message, body.system)
+    try:
+        reply = await agent.chat_test(body.message, body.system)
+    except APIConnectionError as e:
+        base = settings.llm_base_url or "(API padrão OpenAI — sem LLM_BASE_URL)"
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "llm_unreachable",
+                "message": (
+                    "Sem ligação TCP ao endpoint da LLM (nada a responder nesse host/porta). "
+                    "Se usas LM Studio: inicia o modelo, liga o servidor local e confirma a porta. "
+                    "No WSL2, se o LM Studio corre no Windows e 127.0.0.1 falha, usa o IP que o "
+                    "LM Studio mostra na UI ou o IP do host obtido com: "
+                    "grep nameserver /etc/resolv.conf."
+                ),
+                "llm_base_url": base,
+                "exception": str(e),
+            },
+        ) from e
     return LLMTestResponse(reply=reply)

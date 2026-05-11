@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   # ────────────────────────────────────────────
@@ -25,8 +23,7 @@ services:
     image: prom/prometheus:v2.51.2
     container_name: prometheus
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus/rules:/etc/prometheus/rules
+      - ./prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -46,7 +43,7 @@ services:
     image: prom/alertmanager:v0.27.0
     container_name: alertmanager
     volumes:
-      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - ./alertmanager:/etc/alertmanager:ro
     # Host 9094 → container 9093: a porta 9093 no host fica para o webhook do alert-agent (port-forward Kind)
     ports:
       - "9094:9093"
@@ -64,9 +61,9 @@ services:
     image: grafana/loki:2.9.7
     container_name: loki
     volumes:
-      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - ./loki:/etc/loki:ro
       - loki_data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/loki-config.yaml
     ports:
       - "3100:3100"
     networks:
@@ -84,10 +81,10 @@ services:
     image: grafana/promtail:2.9.7
     container_name: promtail
     volumes:
-      - ./promtail/promtail-config.yaml:/etc/promtail/config.yml
+      - ./promtail:/etc/promtail:ro
       - /var/log:/var/log:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    command: -config.file=/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/promtail-config.yaml
     networks:
       - observability
     depends_on:
@@ -102,8 +99,8 @@ services:
     image: otel/opentelemetry-collector-contrib:0.99.0
     container_name: otel-collector
     volumes:
-      - ./otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+      - ./otel:/etc/otelcol-contrib:ro
+    command: ["--config=/etc/otelcol-contrib/otel-collector-config.yaml"]
     ports:
       - "4317:4317"   # OTLP gRPC  (use na sua app)
       - "4318:4318"   # OTLP HTTP  (use na sua app)
@@ -142,8 +139,7 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./db/init-dev-db.sh:/docker-entrypoint-initdb.d/02-init-dev-db.sh
+      - ./db/initdb:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     networks:
@@ -188,8 +184,10 @@ services:
     image: rabbitmq:3.13-management
     container_name: rabbitmq
     hostname: rabbitmq
+    environment:
+      RABBITMQ_CONFIG_FILE: /config/rabbitmq
     volumes:
-      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq:/config:ro
       - rabbitmq_data:/var/lib/rabbitmq
     ports:
       - "5672:5672"     # AMQP

@@ -1,2 +1,5 @@
 # Secret local com chave SSH para Argo CD (nunca commitar)
 k8s/argocd/repo-github-ssh.secret.yaml
+
+# Segredos do alert-agent local
+agent/.env
