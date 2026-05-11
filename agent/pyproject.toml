@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Agente de análise de alertas do Grafana com LLM via LangChain"
 requires-python = ">=3.12"
 dependencies = [
+    "azure-storage-blob>=12.19",
     "fastapi>=0.115",
     "aio-pika>=9.4",
     "python-json-logger==2.0.7",
@@ -13,6 +14,21 @@ dependencies = [
     "langchain-core>=0.3",
     "langchain-anthropic>=0.3",
     "langchain-openai>=0.3",
+]
+
+[tool.hatch.build.targets.wheel]
+# Layout flat (sem pacote alert_agent/); Hatchling não adivinha o que incluir.
+only-include = [
+    "main.py",
+    "agent.py",
+    "alert_parser.py",
+    "analysis.py",
+    "config.py",
+    "context_collector.py",
+    "grafana_client.py",
+    "rabbit_publisher.py",
+    "llm_blob_storage.py",
+    "test_webhook.py",
 ]
 
 [build-system]

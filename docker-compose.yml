@@ -175,8 +175,28 @@ services:
     restart: unless-stopped
 
   # ────────────────────────────────────────────
-  # VISUALIZAÇÃO — Grafana
+  # BLOB — Azurite (apenas serviço Blob)
   # ────────────────────────────────────────────
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.28.0
+    container_name: azurite
+    command:
+      - "azurite-blob"
+      - "--blobHost"
+      - "0.0.0.0"
+      - "--blobPort"
+      - "10000"
+      - "--location"
+      - "/data"
+      - "--skipApiVersionCheck"
+    ports:
+      - "10000:10000"   # Blob
+    volumes:
+      - azurite_data:/data
+    networks:
+      - observability
+    restart: unless-stopped
+
   # ────────────────────────────────────────────
   # FILAS — RabbitMQ (AMQP + Management UI)
   # ────────────────────────────────────────────
@@ -203,6 +223,9 @@ services:
       timeout: 10s
       retries: 5
 
+  # ────────────────────────────────────────────
+  # VISUALIZAÇÃO — Grafana
+  # ────────────────────────────────────────────
   grafana:
     image: grafana/grafana:10.4.2
     container_name: grafana
@@ -234,6 +257,7 @@ volumes:
   loki_data:
   postgres_data:
   rabbitmq_data:
+  azurite_data:
 
 # ────────────────────────────────────────────
 # REDE

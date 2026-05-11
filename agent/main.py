@@ -10,6 +10,7 @@ from pythonjsonlogger import jsonlogger
 
 from agent import AlertAgent
 from config import settings
+from llm_blob_storage import ensure_llm_results_storage_sync, list_llm_folder_download_urls
 
 # ── Logging (JSON, alinhado ao serviço app) ─────────────────
 _handler = logging.StreamHandler()
@@ -29,6 +30,7 @@ agent = AlertAgent()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ensure_llm_results_storage_sync()
     await agent.start()
     try:
         yield
@@ -49,6 +51,15 @@ class LLMTestRequest(BaseModel):
 
 class LLMTestResponse(BaseModel):
     reply: str
+
+
+class LLMResultFile(BaseModel):
+    path: str
+    download_url: str
+
+
+class LLMResultFilesResponse(BaseModel):
+    files: list[LLMResultFile]
 
 
 @app.get("/health")
@@ -112,3 +123,19 @@ async def llm_test(body: LLMTestRequest):
             },
         ) from e
     return LLMTestResponse(reply=reply)
+
+
+@app.get("/llm/download-urls", response_model=LLMResultFilesResponse)
+async def list_llm_result_download_urls():
+    """
+    Lista URLs (com SAS de leitura) dos ficheiros na pasta virtual llm_results/
+    no Blob Storage. Requer BLOB_STORAGE configurado.
+    """
+    if not (settings.blob_storage or "").strip():
+        raise HTTPException(
+            status_code=503,
+            detail="BLOB_STORAGE não configurado",
+        )
+    rows = await list_llm_folder_download_urls()
+    files = [LLMResultFile(path=r["path"], download_url=r["download_url"]) for r in rows]
+    return LLMResultFilesResponse(files=files)

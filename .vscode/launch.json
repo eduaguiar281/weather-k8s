@@ -6,7 +6,7 @@
       "type": "debugpy",
       "request": "launch",
       "module": "uvicorn",
-      "args": ["main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "args": ["main:app", "--host", "127.0.0.1", "--port", "8081"],
       "cwd": "${workspaceFolder}/agent",
       "envFile": "${workspaceFolder}/agent/.env",
       "justMyCode": false

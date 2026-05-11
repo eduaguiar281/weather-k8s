@@ -6,8 +6,9 @@ from config import settings
 from grafana_client import GrafanaClient
 from alert_parser import parse_webhook, AlertContext
 from context_collector import ContextCollector
-from analysis import SYSTEM_PROMPT, build_user_prompt
+from analysis import SYSTEM_PROMPT, build_user_prompt, format_collected_promql_markdown
 from rabbit_publisher import RabbitPublisher
+from llm_blob_storage import save_analysis_markdown_if_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ class AlertAgent:
         """Coleta contexto + LLM (não usar para resolved)."""
         metrics, logs, related = await self._collect_context(alert)
         analysis = await self._analyze(alert, metrics, logs, related)
+        await save_analysis_markdown_if_enabled(analysis)
         logger.info(
             "Analysis generated",
             extra={"alert_title": alert.title},
@@ -122,15 +124,6 @@ class AlertAgent:
             if alert.state in ("firing", "pending"):
                 analysis = await self.analyze_firing_or_pending(alert)
                 await self._rabbit.publish_analysis(alert, analysis)
-                logger.info(
-                    "Analysis published to RabbitMQ",
-                    extra={
-                        "alert_title": alert.title,
-                        "queue": settings.rabbitmq_analysis_queue,
-                        "routing_key": settings.rabbitmq_analysis_routing_key,
-                        "analysis_chars": len(analysis),
-                    },
-                )
                 return
             logger.warning(
                 "Unknown alert state, skipping RabbitMQ publish",
@@ -192,7 +185,13 @@ class AlertAgent:
             HumanMessage(content=user_prompt),
         ]
         response = await self.llm.ainvoke(messages)
-        return response.content
+        content = response.content
+        if not isinstance(content, str):
+            content = str(content)
+        appendix = format_collected_promql_markdown(metrics)
+        if appendix:
+            content = content.rstrip() + appendix
+        return content
 
     async def chat_test(
         self, user_message: str, system_instruction: str | None = None

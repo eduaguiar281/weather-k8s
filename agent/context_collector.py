@@ -4,6 +4,31 @@ from alert_parser import AlertContext
 
 logger = logging.getLogger(__name__)
 
+# Ordem: labels típicos nas métricas OTel / regras Prometheus deste repo primeiro.
+_ENV_LABEL_KEYS = ("deployment_environment", "environment", "env", "stage")
+
+
+def _promql_env_matcher(labels: dict[str, str]) -> str:
+    """Fragmento `,key=\"value\"` para PromQL se os labels do alerta tiverem ambiente."""
+    for key in _ENV_LABEL_KEYS:
+        raw = labels.get(key)
+        if isinstance(raw, str) and raw.strip():
+            val = raw.strip().replace("\\", "\\\\").replace('"', '\\"')
+            return f',{key}="{val}"'
+    return ""
+
+
+def _otel_http_promql_filter(labels: dict[str, str]) -> str | None:
+    """
+    Mesmo filtro que o dashboard Weather — Observabilidade (service_name + ambiente).
+    Exige service_name no alerta (regras Prometheus deste repo agrupam por isso).
+    """
+    raw_sn = labels.get("service_name")
+    if not isinstance(raw_sn, str) or not raw_sn.strip():
+        return None
+    sn = raw_sn.strip().replace("\\", "\\\\").replace('"', '\\"')
+    return f'service_name="{sn}"{_promql_env_matcher(labels)}'
+
 
 class ContextCollector:
     """
@@ -43,19 +68,40 @@ class ContextCollector:
 
         service = alert.service
         ns = alert.namespace
-        label_filter = f'job="{service}"' if not ns else f'namespace="{ns}",job="{service}"'
+        env_match = _promql_env_matcher(alert.labels)
+        label_filter = (
+            f'job="{service}"{env_match}'
+            if not ns
+            else f'namespace="{ns}",job="{service}"{env_match}'
+        )
+
+        otel_http_f = _otel_http_promql_filter(alert.labels)
+        if otel_http_f:
+            http_error_rate = (
+                f'sum(rate(otel_http_server_duration_milliseconds_count{{'
+                f'{otel_http_f},http_status_code=~"4..|5.."}}[5m])) '
+                f'/ sum(rate(otel_http_server_duration_milliseconds_count{{'
+                f'{otel_http_f}}}[5m]))'
+            )
+            http_latency_p99 = (
+                f'histogram_quantile(0.99, sum by (le) (rate('
+                f'otel_http_server_duration_milliseconds_bucket{{{otel_http_f}}}[5m])))'
+            )
+        else:
+            http_error_rate = (
+                f'sum(rate(http_requests_total{{{label_filter},status=~"5.."}}[5m])) '
+                f'/ sum(rate(http_requests_total{{{label_filter}}}[5m]))'
+            )
+            http_latency_p99 = (
+                f'histogram_quantile(0.99, sum(rate('
+                f'http_request_duration_seconds_bucket{{{label_filter}}}[5m])) by (le))'
+            )
 
         queries = {
             "cpu_usage": f'rate(process_cpu_seconds_total{{{label_filter}}}[5m])',
             "memory_bytes": f'process_resident_memory_bytes{{{label_filter}}}',
-            "http_error_rate": (
-                f'sum(rate(http_requests_total{{{label_filter},status=~"5.."}}[5m])) '
-                f'/ sum(rate(http_requests_total{{{label_filter}}}[5m]))'
-            ),
-            "http_latency_p99": (
-                f'histogram_quantile(0.99, sum(rate('
-                f'http_request_duration_seconds_bucket{{{label_filter}}}[5m])) by (le))'
-            ),
+            "http_error_rate": http_error_rate,
+            "http_latency_p99": http_latency_p99,
             "pod_restarts": f'kube_pod_container_status_restarts_total{{namespace="{ns}"}}' if ns else "",
         }
 
@@ -65,13 +111,15 @@ class ContextCollector:
                 continue
             try:
                 data = await self.client.query_prometheus_instant(expr, uid)
-                results[name] = _simplify_prometheus(data)
+                block = _simplify_prometheus(data)
+                block["query"] = expr
+                results[name] = block
             except Exception as e:
                 logger.warning(
                     "Prometheus query failed",
                     extra={"query_name": name, "error": str(e)},
                 )
-                results[name] = {"error": str(e)}
+                results[name] = {"query": expr, "error": str(e)}
 
         return results
 
@@ -125,12 +173,14 @@ class ContextCollector:
         try:
             all_alerts = await self.client.get_active_alerts()
             service = alert.service
+            sn = alert.labels.get("service_name")
             related = []
             for a in all_alerts:
                 lbls = a.get("labels", {})
                 if (
                     lbls.get("job") == service
                     or lbls.get("service") == service
+                    or (sn and lbls.get("service_name") == sn)
                     or lbls.get("namespace") == alert.namespace
                 ) and lbls.get("alertname") != alert.title:
                     related.append({

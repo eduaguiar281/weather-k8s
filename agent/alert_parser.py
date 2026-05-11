@@ -55,6 +55,15 @@ class AlertContext:
         return self.labels.get("namespace", "")
 
     @property
+    def environment(self) -> str:
+        """Ambiente lógico (dev/staging/prod) a partir de labels comuns do Alertmanager/K8s."""
+        for key in ("deployment_environment", "environment", "env", "stage"):
+            raw = self.labels.get(key)
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+        return ""
+
+    @property
     def severity(self) -> str:
         return self.labels.get("severity", "unknown")
 
