@@ -82,6 +82,13 @@ fi
 
 echo "==> Instalando/atualizando kube-state-metrics..."
 kubectl apply -k "github.com/kubernetes/kube-state-metrics/examples/standard?ref=v2.13.0"
+if ! kubectl get clusterrole kube-state-metrics >/dev/null 2>&1 || \
+   ! kubectl get clusterrolebinding kube-state-metrics >/dev/null 2>&1; then
+  echo "Erro: ClusterRole ou ClusterRoleBinding do kube-state-metrics ausente após kubectl apply." >&2
+  echo "Sem RBAC completo o endpoint /metrics fica vazio e o Grafana não tem kube_pod_* / limites." >&2
+  echo "Confirme permissões cluster-admin ao aplicar manifests no cluster." >&2
+  exit 1
+fi
 
 kubectl apply -f - <<EOF
 apiVersion: v1

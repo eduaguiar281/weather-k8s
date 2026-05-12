@@ -13,7 +13,7 @@
         "type": "query",
         "label": "Namespace",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(kube_pod_info, namespace)",
+        "query": "label_values(container_cpu_usage_seconds_total{job=\"cadvisor-kind\",pod!=\"\",namespace!=\"\"}, namespace)",
         "refresh": 1,
         "sort": 1,
         "multi": true,
@@ -28,7 +28,7 @@
         "type": "query",
         "label": "Pod",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(kube_pod_info{namespace=~\"$namespace\"}, pod)",
+        "query": "label_values(container_cpu_usage_seconds_total{job=\"cadvisor-kind\", namespace=~\"$namespace\", pod!=\"\", namespace!=\"\"}, pod)",
         "refresh": 2,
         "sort": 1,
         "multi": true,
@@ -42,8 +42,9 @@
         "name": "deployment",
         "type": "query",
         "label": "Deployment",
+        "description": "Usado apenas nos painéis de histórico/contagem de deploys; CPU, memória e restarts filtram por Namespace e Pod.",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(kube_deployment_labels{namespace=~\"$namespace\"}, deployment)",
+        "query": "label_values(kube_deployment_spec_replicas{namespace=~\"$namespace\"}, deployment)",
         "refresh": 2,
         "sort": 1,
         "multi": true,
@@ -60,6 +61,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Uso de CPU dos Pods (%)",
+      "description": "% relativo aos limites/requests declarados quando existirem no cluster; caso contrário usa 1 vCPU como referência para o painel continuar útil.",
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
@@ -77,7 +79,7 @@
       },
       "targets": [
         {
-          "expr": "100 * sum by (namespace, pod) (label_replace(label_replace(rate(container_cpu_usage_seconds_total{container_label_io_kubernetes_pod_namespace=~\"$namespace\", container_label_io_kubernetes_pod_name=~\"$pod\", container_label_io_kubernetes_pod_name!=\"\", container_label_io_kubernetes_pod_namespace!=\"\"}[5m]), \"namespace\", \"$1\", \"container_label_io_kubernetes_pod_namespace\", \"(.*)\"), \"pod\", \"$1\", \"container_label_io_kubernetes_pod_name\", \"(.*)\")) / clamp_min((sum by (namespace, pod) (kube_pod_container_resource_limits{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"cpu\", unit=\"core\"}) or sum by (namespace, pod) (kube_pod_container_resource_limits_cpu_cores{namespace=~\"$namespace\", pod=~\"$pod\"}) or sum by (namespace, pod) (kube_pod_container_resource_requests{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"cpu\", unit=\"core\"}) or sum by (namespace, pod) (kube_pod_container_resource_requests_cpu_cores{namespace=~\"$namespace\", pod=~\"$pod\"})), 0.001)",
+          "expr": "100 * sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{job=\"cadvisor-kind\", namespace=~\"$namespace\", pod=~\"$pod\", pod!=\"\", namespace!=\"\", container!=\"\", container!=\"POD\", image!=\"\"}[5m])) / clamp_min((sum by (namespace, pod) (kube_pod_container_resource_limits{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"cpu\", unit=\"core\"}) or sum by (namespace, pod) (kube_pod_container_resource_limits_cpu_cores{namespace=~\"$namespace\", pod=~\"$pod\"}) or sum by (namespace, pod) (kube_pod_container_resource_requests{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"cpu\", unit=\"core\"}) or sum by (namespace, pod) (kube_pod_container_resource_requests_cpu_cores{namespace=~\"$namespace\", pod=~\"$pod\"}) or sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{job=\"cadvisor-kind\", namespace=~\"$namespace\", pod=~\"$pod\", pod!=\"\", namespace!=\"\", container!=\"\", container!=\"POD\", image!=\"\"}[5m])) * 0 + 1), 0.001)",
           "legendFormat": "{{namespace}}/{{pod}}",
           "refId": "A"
         }
@@ -86,7 +88,8 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Memória por Pod (Total x Utilizada)",
+      "title": "Memória por Pod (usada x total declarado)",
+      "description": "Total declarado = soma de limits de memória (contentores + init, p.ex. OTel injection), via kube-state-metrics; se não houver limits, usa-se requests. Pods sem manifests de recursos só mostram uso (cAdvisor).",
       "gridPos": { "x": 0, "y": 8, "w": 24, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
@@ -94,7 +97,13 @@
           "unit": "bytes",
           "color": { "mode": "palette-classic" },
           "custom": { "lineWidth": 2 }
-        }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [{ "id": "custom.lineStyle", "value": { "dash": [10, 10] } }]
+          }
+        ]
       },
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom" },
@@ -102,13 +111,13 @@
       },
       "targets": [
         {
-          "expr": "sum by (namespace, pod) (label_replace(label_replace(container_memory_working_set_bytes{container_label_io_kubernetes_pod_namespace=~\"$namespace\", container_label_io_kubernetes_pod_name=~\"$pod\", container_label_io_kubernetes_pod_name!=\"\", container_label_io_kubernetes_pod_namespace!=\"\"}, \"namespace\", \"$1\", \"container_label_io_kubernetes_pod_namespace\", \"(.*)\"), \"pod\", \"$1\", \"container_label_io_kubernetes_pod_name\", \"(.*)\"))",
+          "expr": "sum by (namespace, pod) (container_memory_working_set_bytes{job=\"cadvisor-kind\", namespace=~\"$namespace\", pod=~\"$pod\", pod!=\"\", namespace!=\"\", container!=\"\", container!=\"POD\", image!=\"\"})",
           "legendFormat": "{{namespace}}/{{pod}} - usada",
           "refId": "A"
         },
         {
-          "expr": "sum by (namespace, pod) (kube_pod_container_resource_limits{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"}) or sum by (namespace, pod) (kube_pod_container_resource_limits_memory_bytes{namespace=~\"$namespace\", pod=~\"$pod\"}) or sum by (namespace, pod) (kube_pod_container_resource_requests{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"}) or sum by (namespace, pod) (kube_pod_container_resource_requests_memory_bytes{namespace=~\"$namespace\", pod=~\"$pod\"})",
-          "legendFormat": "{{namespace}}/{{pod}} - total",
+          "expr": "(((sum by (namespace, pod) (kube_pod_container_resource_limits{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"}) + sum by (namespace, pod) (kube_pod_init_container_resource_limits{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"})) or sum by (namespace, pod) (kube_pod_container_resource_limits{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"}) or sum by (namespace, pod) (kube_pod_init_container_resource_limits{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"}) or sum by (namespace, pod) (kube_pod_container_resource_limits_memory_bytes{namespace=~\"$namespace\", pod=~\"$pod\"}) or sum by (namespace, pod) (kube_pod_init_container_resource_limits_memory_bytes{namespace=~\"$namespace\", pod=~\"$pod\"}))) or (((sum by (namespace, pod) (kube_pod_container_resource_requests{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"}) + sum by (namespace, pod) (kube_pod_init_container_resource_requests{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"})) or sum by (namespace, pod) (kube_pod_container_resource_requests{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"}) or sum by (namespace, pod) (kube_pod_init_container_resource_requests{namespace=~\"$namespace\", pod=~\"$pod\", resource=\"memory\", unit=\"byte\"}) or sum by (namespace, pod) (kube_pod_container_resource_requests_memory_bytes{namespace=~\"$namespace\", pod=~\"$pod\"}) or sum by (namespace, pod) (kube_pod_init_container_resource_requests_memory_bytes{namespace=~\"$namespace\", pod=~\"$pod\"})))",
+          "legendFormat": "{{namespace}}/{{pod}} - total declarado",
           "refId": "B"
         }
       ]

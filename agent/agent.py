@@ -6,7 +6,13 @@ from config import settings
 from grafana_client import GrafanaClient
 from alert_parser import parse_webhook, AlertContext
 from context_collector import ContextCollector
-from analysis import SYSTEM_PROMPT, build_user_prompt, format_collected_promql_markdown
+from analysis import (
+    SYSTEM_PROMPT,
+    build_user_prompt,
+    format_collected_logql_markdown,
+    format_collected_promql_markdown,
+    truncate_user_prompt,
+)
 from rabbit_publisher import RabbitPublisher
 from llm_blob_storage import save_analysis_markdown_if_enabled
 
@@ -70,8 +76,8 @@ class AlertAgent:
 
     async def analyze_firing_or_pending(self, alert: AlertContext) -> str:
         """Coleta contexto + LLM (não usar para resolved)."""
-        metrics, logs, related = await self._collect_context(alert)
-        analysis = await self._analyze(alert, metrics, logs, related)
+        metrics, logs, log_queries, related = await self._collect_context(alert)
+        analysis = await self._analyze(alert, metrics, logs, log_queries, related)
         await save_analysis_markdown_if_enabled(analysis)
         logger.info(
             "Analysis generated",
@@ -142,7 +148,7 @@ class AlertAgent:
 
     async def _collect_context(
         self, alert: AlertContext
-    ) -> tuple[dict, dict, list]:
+    ) -> tuple[dict, dict, dict[str, str], list]:
         import asyncio
         metrics, logs, related = await asyncio.gather(
             self.collector.collect_metrics(alert),
@@ -157,12 +163,15 @@ class AlertAgent:
                 extra={"error": str(metrics)},
             )
             metrics = {}
+        log_queries: dict[str, str] = {}
         if isinstance(logs, Exception):
             logger.error(
                 "Failed to collect logs",
                 extra={"error": str(logs)},
             )
             logs = {}
+        else:
+            logs, log_queries = logs
         if isinstance(related, Exception):
             logger.error(
                 "Failed to fetch related alerts",
@@ -170,16 +179,30 @@ class AlertAgent:
             )
             related = []
 
-        return metrics, logs, related
+        return metrics, logs, log_queries, related
 
     async def _analyze(
         self,
         alert: AlertContext,
         metrics: dict,
         logs: dict,
+        log_queries: dict[str, str],
         related: list,
     ) -> str:
-        user_prompt = build_user_prompt(alert, metrics, logs, related)
+        user_prompt = build_user_prompt(
+            alert, metrics, logs, related, log_queries=log_queries
+        )
+        lim = settings.llm_max_user_prompt_chars
+        if lim > 0:
+            user_prompt, truncated = truncate_user_prompt(user_prompt, lim)
+            if truncated:
+                logger.warning(
+                    "User prompt truncated for LLM context limit",
+                    extra={
+                        "llm_max_user_prompt_chars": lim,
+                        "hint": "Raise LLM_MAX_USER_PROMPT_CHARS or server n_ctx if analysis lacks data.",
+                    },
+                )
         messages = [
             SystemMessage(content=SYSTEM_PROMPT),
             HumanMessage(content=user_prompt),
@@ -189,6 +212,7 @@ class AlertAgent:
         if not isinstance(content, str):
             content = str(content)
         appendix = format_collected_promql_markdown(metrics)
+        appendix += format_collected_logql_markdown(log_queries)
         if appendix:
             content = content.rstrip() + appendix
         return content

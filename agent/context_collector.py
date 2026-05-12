@@ -18,16 +18,74 @@ def _promql_env_matcher(labels: dict[str, str]) -> str:
     return ""
 
 
-def _otel_http_promql_filter(labels: dict[str, str]) -> str | None:
+def _loki_otel_selector(
+    labels: dict[str, str],
+    *,
+    service_fallback: str = "",
+    level: str | None = None,
+) -> str | None:
     """
-    Mesmo filtro que o dashboard Weather — Observabilidade (service_name + ambiente).
-    Exige service_name no alerta (regras Prometheus deste repo agrupam por isso).
+    Seletor LogQL alinhado ao Promtail/Loki deste repo (service_name + deployment_environment).
+    `level` opcional (ex.: WARN) quando o stream rotula nível OTel/log estruturado.
     """
     raw_sn = labels.get("service_name")
-    if not isinstance(raw_sn, str) or not raw_sn.strip():
+    if isinstance(raw_sn, str) and raw_sn.strip():
+        sn = raw_sn.strip()
+    else:
+        sn = (service_fallback or "").strip()
+    if not sn:
         return None
-    sn = raw_sn.strip().replace("\\", "\\\\").replace('"', '\\"')
-    return f'service_name="{sn}"{_promql_env_matcher(labels)}'
+
+    env_val = ""
+    for key in _ENV_LABEL_KEYS:
+        raw = labels.get(key)
+        if isinstance(raw, str) and raw.strip():
+            env_val = raw.strip()
+            break
+    if not env_val:
+        return None
+
+    def esc(s: str) -> str:
+        return s.replace("\\", "\\\\").replace('"', '\\"')
+
+    parts = [
+        f'service_name="{esc(sn)}"',
+        f'deployment_environment="{esc(env_val)}"',
+    ]
+    if level:
+        parts.append(f'level="{esc(level.strip())}"')
+    return "{" + ", ".join(parts) + "}"
+
+
+def _otel_http_promql_filter(
+    labels: dict[str, str], *, service_fallback: str = ""
+) -> str:
+    """
+    Mesmo filtro que o dashboard Weather — Observabilidade (service_name + ambiente).
+    Usa `service_name` do alerta; se faltar, `service_fallback` (ex.: job da app).
+    """
+    raw_sn = labels.get("service_name")
+    if isinstance(raw_sn, str) and raw_sn.strip():
+        sn = raw_sn.strip()
+    else:
+        sn = (service_fallback or "").strip() or "unknown"
+    sn_esc = sn.replace("\\", "\\\\").replace('"', '\\"')
+    return f'service_name="{sn_esc}"{_promql_env_matcher(labels)}'
+
+
+def _http_error_and_latency_promql_otel(filter_expr: str) -> tuple[str, str]:
+    """PromQL OTel: taxa de erro HTTP (4xx/5xx) e latência p99."""
+    http_error_rate = (
+        f'sum(rate(otel_http_server_duration_milliseconds_count{{'
+        f'{filter_expr},http_status_code=~"4..|5.."}}[5m])) '
+        f'/ sum(rate(otel_http_server_duration_milliseconds_count{{'
+        f'{filter_expr}}}[5m]))'
+    )
+    http_latency_p99 = (
+        f'histogram_quantile(0.99, sum by (le) (rate('
+        f'otel_http_server_duration_milliseconds_bucket{{{filter_expr}}}[5m])))'
+    )
+    return http_error_rate, http_latency_p99
 
 
 class ContextCollector:
@@ -66,40 +124,26 @@ class ContextCollector:
             )
             return {}
 
-        service = alert.service
         ns = alert.namespace
-        env_match = _promql_env_matcher(alert.labels)
-        label_filter = (
-            f'job="{service}"{env_match}'
-            if not ns
-            else f'namespace="{ns}",job="{service}"{env_match}'
+
+        otel_http_f = _otel_http_promql_filter(
+            alert.labels, service_fallback=alert.service
+        )
+        http_error_rate, http_latency_p99 = _http_error_and_latency_promql_otel(
+            otel_http_f
         )
 
-        otel_http_f = _otel_http_promql_filter(alert.labels)
-        if otel_http_f:
-            http_error_rate = (
-                f'sum(rate(otel_http_server_duration_milliseconds_count{{'
-                f'{otel_http_f},http_status_code=~"4..|5.."}}[5m])) '
-                f'/ sum(rate(otel_http_server_duration_milliseconds_count{{'
-                f'{otel_http_f}}}[5m]))'
-            )
-            http_latency_p99 = (
-                f'histogram_quantile(0.99, sum by (le) (rate('
-                f'otel_http_server_duration_milliseconds_bucket{{{otel_http_f}}}[5m])))'
-            )
-        else:
-            http_error_rate = (
-                f'sum(rate(http_requests_total{{{label_filter},status=~"5.."}}[5m])) '
-                f'/ sum(rate(http_requests_total{{{label_filter}}}[5m]))'
-            )
-            http_latency_p99 = (
-                f'histogram_quantile(0.99, sum(rate('
-                f'http_request_duration_seconds_bucket{{{label_filter}}}[5m])) by (le))'
-            )
-
+        # Métricas de processo vêm do OTel scrape (job Prometheus = otel-collector);
+        # filtro igual ao dashboard: service_name + deployment_environment (via alert.labels).
         queries = {
-            "cpu_usage": f'rate(process_cpu_seconds_total{{{label_filter}}}[5m])',
-            "memory_bytes": f'process_resident_memory_bytes{{{label_filter}}}',
+            "cpu_usage": (
+                f"sum(rate(otel_process_cpu_time_seconds_total{{{otel_http_f}}}[5m])) "
+                f"or sum(rate(otel_process_runtime_cpython_cpu_time_seconds_total{{{otel_http_f}}}[5m]))"
+            ),
+            "memory_bytes": (
+                f"sum(otel_process_memory_usage_bytes{{{otel_http_f}}}) "
+                f"or sum(otel_process_runtime_cpython_memory_bytes{{{otel_http_f}}})"
+            ),
             "http_error_rate": http_error_rate,
             "http_latency_p99": http_latency_p99,
             "pod_restarts": f'kube_pod_container_status_restarts_total{{namespace="{ns}"}}' if ns else "",
@@ -127,29 +171,44 @@ class ContextCollector:
     # Logs
     # ------------------------------------------------------------------
 
-    async def collect_logs(self, alert: AlertContext) -> dict:
+    async def collect_logs(
+        self, alert: AlertContext
+    ) -> tuple[dict[str, list], dict[str, str]]:
         uid = await self._get_loki_uid()
         if not uid:
             logger.warning(
                 "Loki datasource not found",
                 extra={"datasource": "loki"},
             )
-            return {}
+            return {}, {}
 
         service = alert.service
         ns = alert.namespace
 
-        # monta filtro de labels LogQL
-        if ns:
-            base_filter = f'{{namespace="{ns}",job="{service}"}}'
-        else:
-            base_filter = f'{{job="{service}"}}'
+        error_sel = _loki_otel_selector(
+            alert.labels, service_fallback=service, level="ERROR"
+        )
+        warn_sel = _loki_otel_selector(
+            alert.labels, service_fallback=service, level="WARN"
+        )
 
-        queries = {
-            "errors": f'{base_filter} |= "error" | logfmt',
-            "exceptions": f'{base_filter} |= "exception" | logfmt',
-            "warnings": f'{base_filter} |= "warn" | logfmt',
-        }
+        # Preferência: streams OTel/Promtail com service_name + deployment_environment + level.
+        if error_sel and warn_sel:
+            queries = {
+                "errors": f"{error_sel} | logfmt",
+                "exceptions": f'{error_sel} |= "exception" | logfmt',
+                "warnings": f"{warn_sel} | logfmt",
+            }
+        else:
+            if ns:
+                base_filter = f'{{namespace="{ns}",job="{service}"}}'
+            else:
+                base_filter = f'{{job="{service}"}}'
+            queries = {
+                "errors": f'{base_filter} |= "error" | logfmt',
+                "exceptions": f'{base_filter} |= "exception" | logfmt',
+                "warnings": f'{base_filter} |= "warn" | logfmt',
+            }
 
         results: dict[str, list] = {}
         for name, query in queries.items():
@@ -163,7 +222,7 @@ class ContextCollector:
                 )
                 results[name] = []
 
-        return results
+        return results, queries
 
     # ------------------------------------------------------------------
     # Alertas correlacionados

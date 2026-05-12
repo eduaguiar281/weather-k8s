@@ -45,7 +45,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(_AGENT_DIR / ".env"),
         env_file_encoding="utf-8",
+        # ENV, DEBUG, etc. usados só via os.getenv / launch.json — não fazem parte do modelo
+        extra="ignore",
     )
+
+    env: str = "prod"
 
     grafana_url: str = "http://grafana:3000"
     grafana_token: str = ""                  # token da service account (glsa_...)
@@ -55,6 +59,10 @@ class Settings(BaseSettings):
     llm_model: str = "claude-sonnet-4-20250514"
     llm_api_key: str = ""                    # chave da API (anthropic/openai)
     llm_base_url: str = ""                   # base URL customizada (LM Studio, proxies, etc.)
+    # Limite de caracteres do prompt do usuário (métricas + logs no texto enviado à LLM).
+    # 0 = sem truncamento. Para LM Studio / llama.cpp com n_ctx≈4096, use ~2048–4096 e
+    # aumente n_ctx no servidor se precisar de mais contexto.
+    llm_max_user_prompt_chars: int = 0
 
     # RabbitMQ (publicação de análises / resolved)
     rabbitmq_enabled: bool = True

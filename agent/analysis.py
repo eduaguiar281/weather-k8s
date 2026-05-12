@@ -19,6 +19,20 @@ def _humanize_prometheus_value(
         else:
             ms = v
         return f"{ms:.1f} ms".replace(".", ",")
+    # rate(process_cpu_time_seconds_total): segundos de CPU / segundo de relógio → núcleos equivalentes
+    if metric_name == "cpu_usage":
+        cores = f"{v:.3f}".replace(".", ",")
+        pct_um_nucleo = f"{(v * 100):.1f}".replace(".", ",")
+        return (
+            f"≈ {cores} núcleo(s) de CPU em média "
+            f"(≈ {pct_um_nucleo}% da capacidade de 1 núcleo; janela da query em [5m])"
+        )
+    if metric_name == "memory_bytes":
+        gib = v / (1024**3)
+        mib = v / (1024**2)
+        if gib >= 1.0:
+            return f"≈ {gib:.2f} GiB".replace(".", ",")
+        return f"≈ {mib:.1f} MiB".replace(".", ",")
     return None
 
 
@@ -43,7 +57,8 @@ Responda SEMPRE neste formato:
 [Hipótese mais provável com base nos dados. Seja direto.]
 
 ### Evidências encontradas
-- Para cada evidência **vinda** do Prometheus: indique o **nome** da métrica (ex.: `cpu_usage`), a **PromQL** usada na coleta (reproduza o bloco de «Métricas coletadas») e o **valor observado** — use o texto das linhas `valor=` (já humanizado para `http_error_rate` como percentual e `http_latency_p99` em ms; demais métricas: copie o número literal) e `labels=` quando existirem. **Não** cite só nome + query sem o valor.
+- Para cada evidência vinda do Promethues indique o nome da métrica e o valor obeservado. Caso a métrica não retorne valor mostre "Não encontrado"
+- **Inclua todas** as métricas listadas em «Métricas coletadas».
 - Para logs: trecho ou padrão que sustenta a hipótese.
 
 ### Impacto estimado
@@ -54,12 +69,6 @@ Responda SEMPRE neste formato:
 2. [Segunda ação]
 3. [Verificação adicional se necessário]
 
-### Queries para investigação
-```promql
-# Query sugerida para confirmar a causa
-<query aqui>
-```
-
 ## Diretrizes
 
 - Seja direto e objetivo. Desenvolvedores sob pressão não querem texto longo.
@@ -67,8 +76,27 @@ Responda SEMPRE neste formato:
 - Prefira hipóteses concretas a afirmações vagas como "pode ser um problema de performance".
 - Se «Métricas coletadas» listar `valor=...` para uma série, esse valor **deve** aparecer na seção **Evidências encontradas** (não omita por brevidade).
 - Na seção **Escopo verificado**, use sempre os bullets no formato pedido acima — sem omitir aplicação nem ambiente.
-- Sempre sugira pelo menos uma query PromQL ou LogQL para confirmar a causa.
+- Quando «Logs coletados» incluir queries LogQL da automação, a subseção **Logs** em **Queries para investigação** deve **reproduzir** essas expressões (ou versões refinadas com filtros adicionais como `|= "texto"` / `| json`), não omitir LogQL.
+- Quando houver métricas coletadas, sugira pelo menos uma PromQL; quando houver logs ou queries LogQL no contexto, sugira pelo menos uma LogQL para recuperação de logs.
 """
+
+
+def format_collected_logql_markdown(log_queries: dict[str, str]) -> str:
+    """Anexo com as expressões LogQL usadas em `ContextCollector.collect_logs`."""
+    chunks: list[str] = []
+    for name in sorted(log_queries.keys()):
+        q = log_queries.get(name)
+        if not isinstance(q, str) or not q.strip():
+            continue
+        chunks.append(f"#### `{name}`\n```logql\n{q.strip()}\n```")
+    if not chunks:
+        return ""
+    return (
+        "\n---\n\n"
+        "### Queries LogQL utilizadas na coleta automática\n\n"
+        "Expressões executadas pelo agente para obter os logs listados no contexto:\n\n"
+        + "\n\n".join(chunks)
+    )
 
 
 def format_collected_promql_markdown(metrics: dict) -> str:
@@ -92,7 +120,30 @@ def format_collected_promql_markdown(metrics: dict) -> str:
     )
 
 
-def build_user_prompt(alert, metrics: dict, logs: dict, related_alerts: list) -> str:
+def truncate_user_prompt(text: str, max_chars: int) -> tuple[str, bool]:
+    """
+    Encolhe o prompt do usuário para caber em modelos com contexto pequeno (ex.: n_ctx=4096).
+    Mantém o início (alerta + métricas vêm antes dos logs); remove o final se necessário.
+    """
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text, False
+    notice = (
+        "\n\n---\n*[Contexto truncado: aumente LLM_MAX_USER_PROMPT_CHARS ou o n_ctx do "
+        "servidor (LM Studio / llama.cpp) para enviar mais dados.]*\n"
+    )
+    budget = max_chars - len(notice)
+    if budget < 256:
+        budget = 256
+    return text[:budget].rstrip() + notice, True
+
+
+def build_user_prompt(
+    alert,
+    metrics: dict,
+    logs: dict,
+    related_alerts: list,
+    log_queries: dict[str, str] | None = None,
+) -> str:
     """Monta o prompt do usuário com todo o contexto do alerta."""
 
     app = alert.service
@@ -115,7 +166,7 @@ def build_user_prompt(alert, metrics: dict, logs: dict, related_alerts: list) ->
         f"- **Severidade:** {alert.severity}",
         f"",
         f"### Escopo que você deve mencionar na análise",
-        f"(Métricas Prometheus e logs Loki foram filtrados com job/serviço = aplicação e namespace quando existir.)",
+        f"(Métricas OTel no Prometheus e logs Loki: `service_name` + `deployment_environment` quando existirem nos labels; fallback Loki por namespace/job.)",
         f"- **Aplicação verificada:** `{app}` (labels job / service / app)",
         f"- **Ambiente / contexto verificado:** {env_human}",
         f"- **Namespace (filtro nas queries quando presente):** `{ns_detail}`",
@@ -162,9 +213,16 @@ def build_user_prompt(alert, metrics: dict, logs: dict, related_alerts: list) ->
     if logs:
         for category, log_lines in logs.items():
             lines.append(f"\n**{category} ({len(log_lines)} linhas):**")
+            q = (log_queries or {}).get(category)
+            if isinstance(q, str) and q.strip():
+                lines.append(
+                    "  **Query utilizada pela automação (LogQL — reproduza na seção "
+                    "«Queries para investigação»):**"
+                )
+                lines.append(f"```logql\n{q.strip()}\n```")
             if log_lines:
-                for line in log_lines[:10]:     # mostra até 10 por categoria no prompt
-                    lines.append(f"  {line[:300]}")
+                for line in log_lines[:8]:      # mantém prompt menor para LLMs locais
+                    lines.append(f"  {line[:220]}")
             else:
                 lines.append("  Nenhum log encontrado.")
     else:

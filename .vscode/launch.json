@@ -3,8 +3,9 @@
   "configurations": [
     {
       "name": "Agent: uvicorn (debug)",
-      "type": "debugpy",
+      "type": "python",
       "request": "launch",
+      "python": "${workspaceFolder}/agent/.venv/bin/python",
       "module": "uvicorn",
       "args": ["main:app", "--host", "127.0.0.1", "--port", "8081"],
       "cwd": "${workspaceFolder}/agent",
