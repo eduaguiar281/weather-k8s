@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: git@github.com:eduaguiar281/weather-k8s.git
     path: k8s/argocd/filemanager
-    targetRevision: HEAD
+    targetRevision: feat/file-manager
   destination:
     server: https://kubernetes.default.svc
     namespace: file-manager
