@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pm-file-manager
+  namespace: file-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pm-file-manager
+  template:
+    metadata:
+      labels:
+        app: pm-file-manager
+        app_name: pm.file-manager
+      annotations:
+        instrumentation.opentelemetry.io/inject-python: "true"
+    spec:
+      containers:
+        - name: pm-file-manager
+          image: pm-file-manager:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          env:
+            - name: UPLOAD_FOLDER
+              value: "/tmp/filem"
+            - name: URL_PREFIX
+              value: "file-manager"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: AZURE_TENANT_ID
+              value: "f333c3bd-9539-4cc6-9004-f4c38fa2b9b4"
+            - name: AZURE_CLIENT_ID
+              value: "1797bf49-1097-41c4-8a04-2a1368b6f1f1"
+            - name: AZURE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: filemanager-secret
+                  key: AZURE_CLIENT_SECRET
+            - name: VAULT_URL
+              value: "https://akv-zbs-dataplatform.vault.azure.net/"
+            - name: VAULT_NAME
+              value: "kv-reliability-dev"
+            - name: ELASTIC_AGENT_HOST
+              value: "https://0a2d0af7d4a94ad489f531d0dfa7135c.apm.eastus2.azure.elastic-cloud.com"
+            - name: ELASTIC_SECRET_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: filemanager-secret
+                  key: ELASTIC_SECRET_TOKEN
+            - name: DB_PM_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: filemanager-secret
+                  key: DB_PM_CONNECTION_STRING
+            - name: AUTH_TENANT
+              value: "shapedigitalb2c"
+            - name: AUTH_TENANT_ID
+              value: "9dcd7c2b-af81-4668-9d0e-a6e8117267fb"
+            - name: AUTH_CLIENT_ID
+              value: "f5a1d9dd-3205-47f5-be6a-218f38669e8e"
+            - name: AUTH_POLICY
+              value: "B2C_1_signin_signup"
+            - name: APP_ENV
+              value: "local"
+            - name: FEATURE_AUTHZ_ENABLED
+              value: "false"
+            - name: FEATURE_MUTLTITENANT_ENABLED
+              value: "false"
