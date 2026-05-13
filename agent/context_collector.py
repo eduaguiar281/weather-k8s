@@ -6,6 +6,45 @@ logger = logging.getLogger(__name__)
 
 # Ordem: labels típicos nas métricas OTel / regras Prometheus deste repo primeiro.
 _ENV_LABEL_KEYS = ("deployment_environment", "environment", "env", "stage")
+_APP_LABEL_KEYS = ("service_name", "app_name", "application", "app")
+
+
+def _loki_label_esc(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _loki_app_env_base_filter(
+    labels: dict[str, str], *, service_fallback: str
+) -> str | None:
+    """
+    Seletor LogQL `{app, env}`: usa os mesmos nomes de label que vêm no alerta
+    (ex.: service_name + deployment_environment), para casar com Loki/Promtail/OTel.
+    """
+    app_key = ""
+    app_val = ""
+    for key in _APP_LABEL_KEYS:
+        raw = labels.get(key)
+        if isinstance(raw, str) and raw.strip():
+            app_key, app_val = key, raw.strip()
+            break
+    if not app_val:
+        fb = (service_fallback or "").strip()
+        if not fb:
+            return None
+        app_key, app_val = "service_name", fb
+
+    env_key = ""
+    env_val = ""
+    for key in _ENV_LABEL_KEYS:
+        raw = labels.get(key)
+        if isinstance(raw, str) and raw.strip():
+            env_key, env_val = key, raw.strip()
+            break
+    if not env_val:
+        return None
+
+    e = _loki_label_esc
+    return "{" + f'{app_key}="{e(app_val)}", {env_key}="{e(env_val)}"' + "}"
 
 
 def _promql_env_matcher(labels: dict[str, str]) -> str:
@@ -16,45 +55,6 @@ def _promql_env_matcher(labels: dict[str, str]) -> str:
             val = raw.strip().replace("\\", "\\\\").replace('"', '\\"')
             return f',{key}="{val}"'
     return ""
-
-
-def _loki_otel_selector(
-    labels: dict[str, str],
-    *,
-    service_fallback: str = "",
-    level: str | None = None,
-) -> str | None:
-    """
-    Seletor LogQL alinhado ao Promtail/Loki deste repo (service_name + deployment_environment).
-    `level` opcional (ex.: WARN) quando o stream rotula nível OTel/log estruturado.
-    """
-    raw_sn = labels.get("service_name")
-    if isinstance(raw_sn, str) and raw_sn.strip():
-        sn = raw_sn.strip()
-    else:
-        sn = (service_fallback or "").strip()
-    if not sn:
-        return None
-
-    env_val = ""
-    for key in _ENV_LABEL_KEYS:
-        raw = labels.get(key)
-        if isinstance(raw, str) and raw.strip():
-            env_val = raw.strip()
-            break
-    if not env_val:
-        return None
-
-    def esc(s: str) -> str:
-        return s.replace("\\", "\\\\").replace('"', '\\"')
-
-    parts = [
-        f'service_name="{esc(sn)}"',
-        f'deployment_environment="{esc(env_val)}"',
-    ]
-    if level:
-        parts.append(f'level="{esc(level.strip())}"')
-    return "{" + ", ".join(parts) + "}"
 
 
 def _otel_http_promql_filter(
@@ -185,30 +185,24 @@ class ContextCollector:
         service = alert.service
         ns = alert.namespace
 
-        error_sel = _loki_otel_selector(
-            alert.labels, service_fallback=service, level="ERROR"
+        base_filter = _loki_app_env_base_filter(
+            alert.labels, service_fallback=service
         )
-        warn_sel = _loki_otel_selector(
-            alert.labels, service_fallback=service, level="WARN"
-        )
-
-        # Preferência: streams OTel/Promtail com service_name + deployment_environment + level.
-        if error_sel and warn_sel:
-            queries = {
-                "errors": f"{error_sel} | logfmt",
-                "exceptions": f'{error_sel} |= "exception" | logfmt',
-                "warnings": f"{warn_sel} | logfmt",
-            }
-        else:
+        if not base_filter:
             if ns:
-                base_filter = f'{{namespace="{ns}",job="{service}"}}'
+                base_filter = (
+                    "{"
+                    f'namespace="{_loki_label_esc(ns)}",job="{_loki_label_esc(service)}"'
+                    "}"
+                )
             else:
-                base_filter = f'{{job="{service}"}}'
-            queries = {
-                "errors": f'{base_filter} |= "error" | logfmt',
-                "exceptions": f'{base_filter} |= "exception" | logfmt',
-                "warnings": f'{base_filter} |= "warn" | logfmt',
-            }
+                base_filter = f'{{job="{_loki_label_esc(service)}"}}'
+
+        queries = {
+            "errors": f'{base_filter} |~ "(error|ERROR)"',
+            "exceptions": f'{base_filter} |~ "(exception|EXCEPTION|except|EXCEPT)"',
+            "warnings": f'{base_filter} |~ "(warning|warn|WARNING|WARN)"',
+        }
 
         results: dict[str, list] = {}
         for name, query in queries.items():
