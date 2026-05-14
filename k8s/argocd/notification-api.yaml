@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shape-notification-api
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:eduaguiar281/weather-k8s.git
+    path: k8s/argocd/notification-api
+    targetRevision: feat/file-manager
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: notification-api
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
