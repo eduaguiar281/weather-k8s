@@ -24,10 +24,14 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 NAMESPACE="notification-api"
 IMAGE_NAME="shape-notification-api:local"
-SECRET_FILE="$ROOT_DIR/k8s/argocd/notification-api/secret.yaml"
+MANIFEST_DIR="$ROOT_DIR/k8s/argocd/notification-api"
+SECRET_FILE="$MANIFEST_DIR/secret.yaml"
 
 echo "==> [NOTIFICATION-API] Carregando imagem no kind..."
 kind load docker-image "$IMAGE_NAME" --name local
+
+echo "==> [NOTIFICATION-API] Garantindo que o namespace existe..."
+kubectl apply -f "$MANIFEST_DIR/namespace.yaml"
 
 echo "==> [NOTIFICATION-API] Aplicando secret (fora do ArgoCD)..."
 kubectl apply -f "$SECRET_FILE"
