@@ -7,5 +7,8 @@ agent/.env
 # Segredos do file-manager (contém credenciais reais)
 k8s/argocd/filemanager/secret.yaml
 
+# Segredos do notification-api (contém credenciais reais)
+k8s/argocd/notification-api/secret.yaml
+
 # Bytecode Python gerado ao correr o agente
 agent/__pycache__/
