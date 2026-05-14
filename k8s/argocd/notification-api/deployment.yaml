@@ -55,16 +55,6 @@ spec:
                 secretKeyRef:
                   name: notification-api-secret
                   key: OTEL_ENABLED
-            - name: OTEL_SERVICE_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: notification-api-secret
-                  key: OTEL_SERVICE_NAME
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              valueFrom:
-                secretKeyRef:
-                  name: notification-api-secret
-                  key: OTEL_EXPORTER_OTLP_ENDPOINT
             - name: OTEL_SEMCONV_STABILITY_OPT_IN
               valueFrom:
                 secretKeyRef:

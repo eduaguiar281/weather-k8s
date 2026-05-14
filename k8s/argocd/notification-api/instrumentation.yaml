@@ -16,6 +16,6 @@ spec:
       - name: OTEL_PYTHON_LOG_CORRELATION
         value: "true"
       - name: OTEL_SERVICE_NAME
-        value: shape.notification-api
+        value: shape.notification.api
       - name: OTEL_RESOURCE_ATTRIBUTES
-        value: "service.name=shape.notification-api,application.name=shape.notification-api"
+        value: "service.name=shape.notification.api,application.name=shape.notification.api"
