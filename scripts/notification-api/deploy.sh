@@ -45,11 +45,22 @@ kubectl rollout restart deployment/shape-notification-api -n "$NAMESPACE"
 kubectl rollout status deployment/shape-notification-api -n "$NAMESPACE" --timeout=120s
 
 echo ""
+PID_FILE="/tmp/notification-api-port-forward.pid"
+
 echo "==> Restaurando port-forward..."
-pkill -f "kubectl port-forward svc/shape-notification-api -n $NAMESPACE" 2>/dev/null || true
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+  kill "$(cat "$PID_FILE")"
+fi
+pkill -f "kubectl port-forward.*shape-notification-api" 2>/dev/null || true
 sleep 1
-kubectl port-forward svc/shape-notification-api -n "$NAMESPACE" 5000:8080 &>/dev/null &
+
+POD=$(kubectl get pod -n "$NAMESPACE" -l app=shape-notification-api \
+  -o jsonpath='{.items[0].metadata.name}')
+nohup kubectl port-forward "pod/$POD" -n "$NAMESPACE" 5000:8080 \
+  >"$ROOT_DIR/logs/notification-api-port-forward.log" 2>&1 &
+echo $! > "$PID_FILE"
 
 echo ""
 echo "✓ Deploy NOTIFICATION-API concluído!"
 echo "  http://localhost:5000"
+echo "  port-forward PID: $(cat "$PID_FILE") | log: $ROOT_DIR/logs/notification-api-port-forward.log"

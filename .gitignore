@@ -12,3 +12,6 @@ k8s/argocd/notification-api/secret.yaml
 
 # Bytecode Python gerado ao correr o agente
 agent/__pycache__/
+
+# Logs locais de port-forward
+logs/
