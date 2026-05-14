@@ -7,5 +7,5 @@ spec:
   selector:
     app: shape-notification-api
   ports:
-    - port: 8000
-      targetPort: 8000
+    - port: 8080
+      targetPort: 8080

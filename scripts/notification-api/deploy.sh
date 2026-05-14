@@ -48,7 +48,7 @@ echo ""
 echo "==> Restaurando port-forward..."
 pkill -f "kubectl port-forward svc/shape-notification-api -n $NAMESPACE" 2>/dev/null || true
 sleep 1
-kubectl port-forward svc/shape-notification-api -n "$NAMESPACE" 5000:8000 &>/dev/null &
+kubectl port-forward svc/shape-notification-api -n "$NAMESPACE" 5000:8080 &>/dev/null &
 
 echo ""
 echo "✓ Deploy NOTIFICATION-API concluído!"

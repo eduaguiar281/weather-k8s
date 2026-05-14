@@ -21,7 +21,7 @@ spec:
           image: shape-notification-api:local
           imagePullPolicy: Never
           ports:
-            - containerPort: 8000
+            - containerPort: 8080
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
