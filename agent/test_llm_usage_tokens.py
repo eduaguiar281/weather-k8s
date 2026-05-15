@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from llm_usage import extract_llm_usage_tokens
+from alert_agent.infra.llm.usage import extract_llm_usage_tokens
 
 
 class ExtractLlmUsageTokensTests(unittest.TestCase):

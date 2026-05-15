@@ -12,8 +12,8 @@ import aio_pika
 from aio_pika import DeliveryMode, ExchangeType, Message
 from aio_pika.exceptions import DeliveryError
 
-from alert_parser import AlertContext
-from config import settings
+from alert_agent.config import settings
+from alert_agent.core.alert_parser import AlertContext
 
 logger = logging.getLogger(__name__)
 

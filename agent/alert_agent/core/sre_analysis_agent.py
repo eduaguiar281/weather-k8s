@@ -1,12 +1,15 @@
-import logging
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_core.language_models.chat_models import BaseChatModel
+"""Orquestrador do caso de uso: alerta → contexto → LLM → artefactos / filas."""
 
-from config import settings
-from grafana_client import GrafanaClient
-from alert_parser import parse_webhook, AlertContext
-from context_collector import ContextCollector
-from analysis import (
+from __future__ import annotations
+
+import asyncio
+import logging
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from alert_agent.config import settings
+from alert_agent.core.alert_parser import AlertContext, parse_first_alert
+from alert_agent.core.analysis import (
     SYSTEM_PROMPT,
     UserPromptOptions,
     build_user_prompt,
@@ -15,9 +18,12 @@ from analysis import (
     parse_label_allowlist_csv,
     truncate_user_prompt_sections,
 )
-from rabbit_publisher import RabbitPublisher
-from llm_blob_storage import save_analysis_markdown_if_enabled
-from llm_usage import extract_llm_usage_tokens
+from alert_agent.core.context_collector import ContextCollector
+from alert_agent.core.ports import (
+    AlertEventPublisher,
+    LlmChatPort,
+    SaveAnalysisArtifactFn,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,55 +37,29 @@ def _prompt_options_from_settings(s) -> UserPromptOptions:
     )
 
 
-def _build_llm(s) -> BaseChatModel:
-    """Instancia o modelo de LLM de acordo com LLM_PROVIDER."""
-    provider = s.llm_provider.lower()
-    base_url = s.llm_base_url or None
-    extra: dict = {}
-    if base_url:
-        extra["base_url"] = base_url
-    mt = s.llm_max_output_tokens
-    if mt > 0:
-        extra["max_tokens"] = mt
-
-    if provider == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model=s.llm_model,
-            api_key=s.llm_api_key,
-            **extra,
-        )
-
-    if provider == "openai":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=s.llm_model,
-            api_key=s.llm_api_key,
-            **extra,
-        )
-
-    raise ValueError(
-        f"LLM_PROVIDER '{provider}' não suportado. "
-        "Valores aceitos: anthropic, openai"
-    )
-
-
-class AlertAgent:
+class SreAnalysisAgent:
     """
-    Orquestra o fluxo completo:
-      1. Parseia o webhook do Grafana
+    Agente SRE de análise de alertas:
+      1. Interpreta webhook do Grafana
       2. Coleta métricas (Prometheus) e logs (Loki)
-      3. Envia para a LLM via LangChain
-      4. Retorna a análise formatada
+      3. Produz análise via LLM
+      4. Persistência opcional e publicação em filas (via portas injetadas)
     """
 
-    def __init__(self):
-        self.grafana = GrafanaClient()
-        self.collector = ContextCollector(self.grafana)
-        self.llm = _build_llm(settings)
-        self._rabbit = RabbitPublisher()
+    def __init__(
+        self,
+        *,
+        collector: ContextCollector,
+        llm: LlmChatPort,
+        publisher: AlertEventPublisher,
+        save_analysis_artifact: SaveAnalysisArtifactFn,
+    ) -> None:
+        self._collector = collector
+        self._llm = llm
+        self._publisher = publisher
+        self._save_analysis_artifact = save_analysis_artifact
         logger.info(
-            "Alert agent LLM started",
+            "SRE analysis agent LLM ready",
             extra={
                 "llm_provider": settings.llm_provider,
                 "llm_model": settings.llm_model,
@@ -87,16 +67,16 @@ class AlertAgent:
         )
 
     async def start(self) -> None:
-        await self._rabbit.start()
+        await self._publisher.start()
 
     async def stop(self) -> None:
-        await self._rabbit.stop()
+        await self._publisher.stop()
 
     async def analyze_firing_or_pending(self, alert: AlertContext) -> str:
         """Coleta contexto + LLM (não usar para resolved)."""
         metrics, logs, log_queries, related = await self._collect_context(alert)
         analysis = await self._analyze(alert, metrics, logs, log_queries, related)
-        await save_analysis_markdown_if_enabled(analysis)
+        await self._save_analysis_artifact(analysis)
         logger.info(
             "Analysis generated",
             extra={"alert_title": alert.title},
@@ -104,16 +84,15 @@ class AlertAgent:
         return analysis
 
     async def handle(self, payload: dict) -> str:
-        alerts = parse_webhook(payload)
+        alert = parse_first_alert(payload)
 
-        if not alerts:
+        if alert is None:
             logger.warning(
                 "Webhook received with no valid alerts",
                 extra={"event": "webhook_no_valid_alerts"},
             )
             return "Nenhum alerta válido encontrado no payload."
 
-        alert = alerts[0]
         logger.info(
             "Processing alert",
             extra={"alert_title": alert.title, "alert_state": alert.state},
@@ -126,16 +105,15 @@ class AlertAgent:
 
     async def handle_and_publish(self, payload: dict) -> None:
         """Processamento em background: publica em analysis ou resolved no RabbitMQ."""
-        alerts = parse_webhook(payload)
+        alert = parse_first_alert(payload)
 
-        if not alerts:
+        if alert is None:
             logger.warning(
                 "Webhook received with no valid alerts",
                 extra={"event": "webhook_no_valid_alerts"},
             )
             return
 
-        alert = alerts[0]
         logger.info(
             "Processing alert (background)",
             extra={"alert_title": alert.title, "alert_state": alert.state},
@@ -143,11 +121,11 @@ class AlertAgent:
 
         try:
             if alert.state == "resolved":
-                await self._rabbit.publish_resolved(alert)
+                await self._publisher.publish_resolved(alert)
                 return
             if alert.state in ("firing", "pending"):
                 analysis = await self.analyze_firing_or_pending(alert)
-                await self._rabbit.publish_analysis(alert, analysis)
+                await self._publisher.publish_analysis(alert, analysis)
                 return
             logger.warning(
                 "Unknown alert state, skipping RabbitMQ publish",
@@ -167,11 +145,10 @@ class AlertAgent:
     async def _collect_context(
         self, alert: AlertContext
     ) -> tuple[dict, dict, dict[str, str], list]:
-        import asyncio
         metrics, logs, related = await asyncio.gather(
-            self.collector.collect_metrics(alert),
-            self.collector.collect_logs(alert),
-            self.collector.collect_related_alerts(alert),
+            self._collector.collect_metrics(alert),
+            self._collector.collect_logs(alert),
+            self._collector.collect_related_alerts(alert),
             return_exceptions=True,
         )
 
@@ -246,21 +223,10 @@ class AlertAgent:
             SystemMessage(content=SYSTEM_PROMPT),
             HumanMessage(content=user_prompt),
         ]
-        response = await self.llm.ainvoke(messages)
-        in_tok, out_tok = extract_llm_usage_tokens(response)
-        logger.info(
-            "LLM tokens: entrada=%s saída=%s",
-            in_tok if in_tok is not None else "n/d",
-            out_tok if out_tok is not None else "n/d",
-            extra={
-                "llm_input_tokens": in_tok,
-                "llm_output_tokens": out_tok,
-                "alert_title": alert.title,
-            },
+        content = await self._llm.invoke(
+            messages,
+            log_extra={"alert_title": alert.title},
         )
-        content = response.content
-        if not isinstance(content, str):
-            content = str(content)
         appendix = format_collected_promql_markdown(metrics)
         appendix += format_collected_logql_markdown(log_queries)
         if appendix:
@@ -275,18 +241,4 @@ class AlertAgent:
         if system_instruction:
             parts.append(SystemMessage(content=system_instruction))
         parts.append(HumanMessage(content=user_message))
-        response = await self.llm.ainvoke(parts)
-        in_tok, out_tok = extract_llm_usage_tokens(response)
-        logger.info(
-            "LLM tokens: entrada=%s saída=%s",
-            in_tok if in_tok is not None else "n/d",
-            out_tok if out_tok is not None else "n/d",
-            extra={
-                "llm_input_tokens": in_tok,
-                "llm_output_tokens": out_tok,
-            },
-        )
-        content = response.content
-        if isinstance(content, str):
-            return content
-        return str(content)
+        return await self._llm.invoke(parts, log_extra={})

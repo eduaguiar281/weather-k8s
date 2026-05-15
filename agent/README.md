@@ -6,21 +6,72 @@ com uma LLM (via LangChain) para ajudar o desenvolvedor a identificar a causa.
 
 ## Estrutura
 
+O código vive no pacote Python **`alert_agent`**, organizado por responsabilidade (SRP, baixo acoplamento: **core** não importa módulos de **infra**; a montagem faz-se em **`bootstrap`**).
+
 ```
 agent/
-├── main.py              # FastAPI — recebe o webhook (202 + background)
-├── agent.py             # Orquestrador principal + factory LangChain
-├── rabbit_publisher.py  # RabbitMQ (filas analysis / resolved)
-├── config.py            # Configuração via variáveis de ambiente
-├── grafana_client.py    # API REST do Grafana
-├── alert_parser.py      # Parser do payload do webhook
-├── context_collector.py # Coleta métricas e logs
-├── analysis.py          # System prompt + montagem do contexto
+├── main.py                     # Shim → exporta app FastAPI (uvicorn main:app)
+├── alert_agent/
+│   ├── config.py               # Settings (Pydantic) — variáveis de ambiente
+│   ├── bootstrap.py            # Composition root: Grafana + Rabbit + LLM + SreAnalysisAgent
+│   ├── core/                   # Caso de uso / domínio
+│   │   ├── ports.py            # Protocols (Grafana, LLM chat, publisher, …)
+│   │   ├── alert_parser.py
+│   │   ├── analysis.py
+│   │   ├── context_collector.py
+│   │   └── sre_analysis_agent.py   # Orquestrador «agente SRE análise»
+│   ├── infra/                  # Adaptadores externos
+│   │   ├── grafana/client.py
+│   │   ├── rabbitmq/publisher.py
+│   │   ├── blob/llm_results.py
+│   │   └── llm/                # factory LangChain + LlmChatService (invocação DRY + tokens)
+│   └── presentation/
+│       └── app.py              # FastAPI, rotas, lifespan
 ├── Dockerfile
-├── pyproject.toml       # Dependências (gerenciadas pelo UV)
+├── pyproject.toml
 ├── .env.example
-└── test_webhook.py      # Teste local
+└── test_webhook.py
 ```
+
+### Arquitetura (camadas)
+
+```mermaid
+flowchart TB
+  subgraph presentation [presentation]
+    Http[FastAPI app]
+  end
+  subgraph bootstrap [bootstrap]
+    Build[build_sre_analysis_agent]
+  end
+  subgraph core [core]
+    Sre[SreAnalysisAgent]
+    Prompts[analysis e alert_parser]
+    Ctx[ContextCollector]
+  end
+  subgraph infraLayer [infra]
+    Grafana[GrafanaClient]
+    Rabbit[RabbitPublisher]
+    Blob[Blob llm_results]
+    Llm[LlmChatService]
+  end
+  Http -->|"rotas webhook e teste LLM"| Sre
+  Http -->|"lifespan e listagem SAS"| Blob
+  Build --> Sre
+  Build --> Ctx
+  Build --> Grafana
+  Build --> Rabbit
+  Build --> Llm
+  Sre --> Prompts
+  Sre --> Ctx
+  Ctx -.->|"Protocol"| Grafana
+  Sre -.->|"Protocol"| Llm
+  Sre -.->|"Protocol"| Rabbit
+  Sre -.->|"persistir análise"| Blob
+```
+
+- **`presentation`**: HTTP apenas; não contém lógica de análise. Usa **Blob** direto só para operações operacionais (garantir container no startup e listar SAS em `/llm/download-urls`). O fluxo **alerta → análise** passa pelo **`SreAnalysisAgent`** em core.
+- **`core`**: `SreAnalysisAgent` e `ContextCollector` dependem de **Protocols** em `ports.py` (`LlmChatPort`, `GrafanaDatasourcePort`, `AlertEventPublisher`, …), não de classes concretas de infra.
+- **`bootstrap`**: único sítio que instancia adaptadores (`GrafanaClient`, `RabbitPublisher`, `LlmChatService`) e injeta no agente.
 
 ## Providers de LLM suportados
 
@@ -108,6 +159,8 @@ uv run python test_webhook.py
 |--------|------------|-----------|
 | GET    | /health    | Health check |
 | POST   | /webhook   | Recebe alertas do Grafana; responde **202 Accepted** (`{"status":"accepted"}`) e publica em background no RabbitMQ (`weather.agent.analysis` ou `weather.agent.resolved`) |
+| POST   | /llm/test  | Mensagem livre à LLM (validação do provider) |
+| GET    | /llm/download-urls | Lista SAS de leitura das pastas em `llm_results/` no Blob (requer `BLOB_STORAGE`) |
 
 ## Variáveis de ambiente
 

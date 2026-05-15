@@ -1,6 +1,8 @@
 import time
+
 import httpx
-from config import settings
+
+from alert_agent.config import settings
 
 
 class GrafanaClient:
@@ -12,10 +14,6 @@ class GrafanaClient:
             "Authorization": f"Bearer {settings.grafana_token}",
             "Content-Type": "application/json",
         }
-
-    # ------------------------------------------------------------------
-    # Datasources
-    # ------------------------------------------------------------------
 
     async def list_datasources(self) -> list[dict]:
         """Retorna todos os datasources configurados no Grafana."""
@@ -36,10 +34,6 @@ class GrafanaClient:
                 return ds
         return None
 
-    # ------------------------------------------------------------------
-    # Prometheus
-    # ------------------------------------------------------------------
-
     async def query_prometheus(
         self,
         expr: str,
@@ -50,7 +44,7 @@ class GrafanaClient:
         lb = lookback_seconds or settings.metrics_lookback
         end = int(time.time())
         start = end - lb
-        step = max(lb // 60, 15)            # resolução razoável
+        step = max(lb // 60, 15)
 
         async with httpx.AsyncClient() as client:
             r = await client.get(
@@ -83,10 +77,6 @@ class GrafanaClient:
             r.raise_for_status()
             return r.json()
 
-    # ------------------------------------------------------------------
-    # Loki
-    # ------------------------------------------------------------------
-
     async def query_loki(
         self,
         log_query: str,
@@ -117,10 +107,6 @@ class GrafanaClient:
             r.raise_for_status()
             return r.json()
 
-    # ------------------------------------------------------------------
-    # Alertas
-    # ------------------------------------------------------------------
-
     async def get_active_alerts(self) -> list[dict]:
         """Retorna todos os alertas ativos no Grafana Alerting."""
         async with httpx.AsyncClient() as client:
@@ -132,10 +118,6 @@ class GrafanaClient:
             )
             r.raise_for_status()
             return r.json()
-
-    # ------------------------------------------------------------------
-    # Dashboards
-    # ------------------------------------------------------------------
 
     async def search_dashboards(self, query: str) -> list[dict]:
         """Busca dashboards pelo nome."""
@@ -149,10 +131,6 @@ class GrafanaClient:
             r.raise_for_status()
             return r.json()
 
-
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
 
 def _parse_lookback(s: str) -> int:
     """Converte '15m', '1h', '2h' em segundos."""

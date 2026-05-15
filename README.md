@@ -149,7 +149,7 @@ Internamente chama `deploy-dev.sh` e/ou `deploy-prod.sh`.
 
 ### 8. Deploy do agente (Alert Agent)
 
-O agente roda no cluster Kubernetes (namespace `weather-agent`) e é gerenciado pelo Argo CD. Ele **não faz parte do Docker Compose**.
+O agente roda no cluster Kubernetes (namespace `weather-agent`) e é gerenciado pelo Argo CD. Ele **não faz parte do Docker Compose**. O código Python está organizado em camadas (`core`, `infra`, `presentation`) e um composition root (`bootstrap`); ver **[agent/README.md — Arquitetura](agent/README.md#arquitetura-camadas)**.
 
 **8.1 — Defina as variáveis de ambiente obrigatórias:**
 

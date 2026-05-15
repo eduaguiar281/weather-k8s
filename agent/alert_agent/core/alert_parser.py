@@ -152,3 +152,9 @@ def parse_webhook(payload: dict) -> list[AlertContext]:
         )
 
     return contexts
+
+
+def parse_first_alert(payload: dict) -> AlertContext | None:
+    """Primeiro alerta válido do webhook ou None."""
+    alerts = parse_webhook(payload)
+    return alerts[0] if alerts else None

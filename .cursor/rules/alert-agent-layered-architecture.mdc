@@ -1,0 +1,36 @@
+---
+description: Arquitetura em camadas do serviço Python alert-agent (core / infra / presentation)
+globs: agent/**/*
+alwaysApply: false
+---
+
+# Alert agent — arquitetura e convenções
+
+Contexto detalhado: [agent/README.md](agent/README.md) (secção **Arquitetura**).
+
+## Camadas (`alert_agent/`)
+
+- **`core/`**: caso de uso e domínio (`SreAnalysisAgent`, parsers, prompts, `ContextCollector`). **Proibido** importar módulos de `infra/` ou `presentation/`. Dependências externas só via **`core/ports.py`** (`typing.Protocol`).
+- **`infra/`**: adaptadores (Grafana, RabbitMQ, Blob, LLM factory + `LlmChatService`). Implementam as portas; sem lógica de orquestração de negócio.
+- **`presentation/`**: FastAPI, rotas, schemas, lifespan. Sem regras de negócio; só HTTP e delegação ao agente / helpers operacionais (ex. blob em endpoints administrativos).
+- **`bootstrap.py`**: **único** sítio que instancia implementações concretas e injeta no `SreAnalysisAgent`.
+- **`config.py`**: `BaseSettings` / env; valores no código são *defaults*, sobrescritos por variáveis de ambiente.
+
+## Princípios
+
+- **SRP**: um módulo, uma responsabilidade clara.
+- **DRY**: invocação LLM e logging de tokens centralizados em `LlmChatService`; evitar duplicar parse de webhook — reutilizar helpers em `core` (ex. `parse_first_alert`).
+- **Baixo acoplamento**: novos integradores → nova pasta ou módulo sob `infra/` + Protocol em `ports.py` se o `core` precisar deles; wire em `bootstrap.py`.
+
+## Onde colocar código novo
+
+| Tipo de mudança | Sítio |
+|-----------------|--------|
+| Novo endpoint HTTP | `presentation/app.py` (ou router dedicado importado pela app) |
+| Novo broker / API externa | `infra/<nome>/` |
+| Orquestração / regra de negócio | `core/` |
+| Ajuste de dependências / wiring | `bootstrap.py` |
+
+## Entrypoint
+
+- Manter `agent/main.py` como shim fino (`uvicorn main:app`). Não recolocar lógica de app fora de `alert_agent/`.

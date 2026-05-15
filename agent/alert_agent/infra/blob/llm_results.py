@@ -15,7 +15,7 @@ from azure.storage.blob import (
     generate_blob_sas,
 )
 
-from config import settings
+from alert_agent.config import settings
 
 logger = logging.getLogger(__name__)
 

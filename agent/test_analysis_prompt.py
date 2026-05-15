@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from alert_parser import AlertContext
-from analysis import (
+from alert_agent.core.alert_parser import AlertContext
+from alert_agent.core.analysis import (
     UserPromptOptions,
     build_user_prompt,
     parse_label_allowlist_csv,

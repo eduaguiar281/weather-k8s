@@ -4,5 +4,7 @@ k8s/argocd/repo-github-ssh.secret.yaml
 # Segredos do alert-agent local
 agent/.env
 
-# Bytecode Python gerado ao correr o agente
-agent/__pycache__/
+# Bytecode Python
+__pycache__/
+*.py[cod]
+*$py.class

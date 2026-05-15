@@ -1,6 +1,7 @@
 import logging
-from grafana_client import GrafanaClient
-from alert_parser import AlertContext
+
+from alert_agent.core.alert_parser import AlertContext
+from alert_agent.core.ports import GrafanaDatasourcePort
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ class ContextCollector:
     relacionados ao serviço/namespace do alerta.
     """
 
-    def __init__(self, client: GrafanaClient):
+    def __init__(self, client: GrafanaDatasourcePort):
         self.client = client
         self._prom_uid: str | None = None
         self._loki_uid: str | None = None
