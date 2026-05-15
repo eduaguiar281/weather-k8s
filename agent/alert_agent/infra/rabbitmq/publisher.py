@@ -1,6 +1,7 @@
 """
 Publicação de análises e eventos resolved no RabbitMQ (AMQP).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -150,7 +151,9 @@ class RabbitPublisher:
                 kind=kind,
                 alert=alert,
                 routing_key=rk,
-                error=RuntimeError("RabbitMQ exchange not initialized (did start() run?)"),
+                error=RuntimeError(
+                    "RabbitMQ exchange not initialized (did start() run?)"
+                ),
                 analysis=analysis,
             )
             return
@@ -201,7 +204,9 @@ class RabbitPublisher:
                 kind=kind,
                 alert=alert,
                 routing_key=rk,
-                error=RuntimeError("RabbitMQ exchange not initialized (did start() run?)"),
+                error=RuntimeError(
+                    "RabbitMQ exchange not initialized (did start() run?)"
+                ),
             )
             return
 

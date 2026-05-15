@@ -125,6 +125,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Cria o ambiente virtual e instala as dependências
 uv sync
 
+# (Alternativa) pip: a primeira instalação pode demorar vários minutos (LangChain /
+# dependências ML). Sem saída visível parece “travar”; use por exemplo:
+#   pip install -e ".[dev]"
+# Testes: `pytest tests -q --cov=alert_agent` (timeout global 120s via pytest-timeout).
+
 # Rode o servidor localmente
 uv run uvicorn main:app --reload
 ```

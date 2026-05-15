@@ -89,8 +89,12 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def localize_host_docker_internal_when_unusable(self):
         self.grafana_url = _rewrite_host_docker_internal_if_dns_fails(self.grafana_url)
-        self.llm_base_url = _rewrite_host_docker_internal_if_dns_fails(self.llm_base_url)
-        self.rabbitmq_url = _rewrite_host_docker_internal_if_dns_fails(self.rabbitmq_url)
+        self.llm_base_url = _rewrite_host_docker_internal_if_dns_fails(
+            self.llm_base_url
+        )
+        self.rabbitmq_url = _rewrite_host_docker_internal_if_dns_fails(
+            self.rabbitmq_url
+        )
         blob = (self.blob_storage or "").strip()
         if blob and not blob.startswith("DefaultEndpointsProtocol="):
             self.blob_storage = _rewrite_host_docker_internal_if_dns_fails(blob)

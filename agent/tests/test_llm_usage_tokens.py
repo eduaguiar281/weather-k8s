@@ -27,6 +27,12 @@ class ExtractLlmUsageTokensTests(unittest.TestCase):
 
         self.assertEqual(extract_llm_usage_tokens(R()), (3, 4))
 
+    def test_invalid_usage_values_yield_none(self):
+        class R:
+            usage_metadata = {"input_tokens": "nope", "output_tokens": "x"}
+
+        self.assertEqual(extract_llm_usage_tokens(R()), (None, None))
+
 
 if __name__ == "__main__":
     unittest.main()

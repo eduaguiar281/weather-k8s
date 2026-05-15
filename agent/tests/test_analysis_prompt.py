@@ -75,7 +75,10 @@ class BuildUserPromptTests(unittest.TestCase):
         self.assertIn("### PromQL · `m_a`", text)
         self.assertIn("### PromQL · `m_b`", text)
         self.assertIn("### LogQL · `errors`", text)
-        self.assertNotIn("```promql\nup\n```", text.split("## Métricas coletadas")[1].split("## Logs")[0])
+        self.assertNotIn(
+            "```promql\nup\n```",
+            text.split("## Métricas coletadas")[1].split("## Logs")[0],
+        )
 
     def test_verbose_mode_repeats_query_under_metric(self):
         alert = _minimal_alert()

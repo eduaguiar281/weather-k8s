@@ -34,3 +34,20 @@ Contexto detalhado: [agent/README.md](agent/README.md) (secção **Arquitetura**
 ## Entrypoint
 
 - Manter `agent/main.py` como shim fino (`uvicorn main:app`). Não recolocar lógica de app fora de `alert_agent/`.
+
+## Testes (`agent/`)
+
+- **Onde:** testes automatizados em `agent/tests/` (pytest). Scripts de smoke/manual **não** expõem funções `test_*` que o pytest descubra por engano.
+- **Independência:** cada teste é isolado (ordem irrelevante). Não deixar patches, env vars nem alterações a `settings` activas entre testes; usar `MonkeyPatch` / `with patch(...)`; criar objectos novos por teste quando existir estado mutável (ex. caches em `ContextCollector`).
+- **Core vs infra:** testes de domínio usam fakes dos `Protocol` em `core/ports.py` — não importar `infra/` ou `presentation/` nesses casos.
+- **Integração simulada:** Grafana, RabbitMQ, Blob, LLM via mocks; a suíte deve passar sem rede.
+- **API:** rotas FastAPI com cliente ASGI e agente/publicadores substituídos, sem efeitos globais que afectem testes seguintes.
+- **Cobertura:** manter o pacote `alert_agent` com cobertura de linhas ~80% (`pytest --cov=alert_agent`), salvo decisão em contrário no PR.
+- **Timeout:** `pytest-timeout` com limite global (ver `agent/pyproject.toml`) reduz risco da suíte ficar bloqueada.
+
+## Formatação (`agent/`)
+
+- **Black:** formatador obrigatório para Python em `agent/` (`alert_agent/`, `tests/`, `main.py`, `test_webhook.py`). Comandos típicos a partir de `agent/`: `uv run black alert_agent tests main.py test_webhook.py` / `uv run black --check ...` (ou `black` após `pip install -e ".[dev]"`).
+- Black uniformiza estilo; não substitui linters de lógica (ex. ruff).
+
+Contexto do repositório (Claude / assistentes): [CLAUDE.md](CLAUDE.md).

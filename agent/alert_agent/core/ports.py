@@ -15,7 +15,9 @@ class GrafanaDatasourcePort(Protocol):
 
     async def find_datasource(self, ds_type: str) -> dict | None: ...
 
-    async def query_prometheus_instant(self, expr: str, datasource_uid: str) -> dict: ...
+    async def query_prometheus_instant(
+        self, expr: str, datasource_uid: str
+    ) -> dict: ...
 
     async def query_loki(
         self,

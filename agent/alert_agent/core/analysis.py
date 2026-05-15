@@ -3,9 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-def _humanize_prometheus_value(
-    metric_name: str, raw, query: str | None
-) -> str | None:
+def _humanize_prometheus_value(metric_name: str, raw, query: str | None) -> str | None:
     """Formata valores conhecidos para leitura (pt-BR: vírgula decimal)."""
     if raw is None:
         return None
@@ -78,9 +76,7 @@ def _filter_labels_line(labels: dict[str, str], allowlist: frozenset[str]) -> st
         else:
             omitted += 1
     if not picked and omitted:
-        return (
-            f"- **Labels:** ({omitted} labels omitidos do prompt; use o alerta/fonte bruta se precisar de todos.)"
-        )
+        return f"- **Labels:** ({omitted} labels omitidos do prompt; use o alerta/fonte bruta se precisar de todos.)"
     line = "- **Labels (prioridade SRE):** " + ", ".join(picked)
     if omitted:
         line += f" — *+{omitted} outros labels omitidos do prompt*"
@@ -239,7 +235,9 @@ def _build_header(alert, allowlist: frozenset[str], *, omit_labels: bool) -> str
             f"namespace `{alert.namespace}`"
         )
     else:
-        env_human = "não identificado (sem environment/env/stage nem namespace nos labels)"
+        env_human = (
+            "não identificado (sem environment/env/stage nem namespace nos labels)"
+        )
 
     ns_detail = alert.namespace or "não informado"
 
@@ -560,4 +558,3 @@ def build_user_prompt(
         log_queries,
         o,
     ).join()
-

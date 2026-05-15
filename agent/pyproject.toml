@@ -16,9 +16,38 @@ dependencies = [
     "langchain-openai>=0.3",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "pytest-timeout>=2.3",
+    "black>=24.0",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["alert_agent"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+include = '\.pyi?$'
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]
+# Evita suíte a parecer “travada” se algum teste bloquear (I/O, asyncio).
+timeout = 120
+
+[tool.coverage.run]
+source = ["alert_agent"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_empty = true

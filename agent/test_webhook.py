@@ -6,6 +6,7 @@ Execute com: python test_webhook.py
 Com agente no Kind + port-forward do deploy: use http://localhost:9093/webhook
 (ver scripts/deploy-agent.sh). Com uvicorn local na porta padrão: 8000.
 """
+
 import httpx
 import json
 
@@ -45,7 +46,7 @@ PAYLOAD = {
 }
 
 
-def test():
+def send_sample_webhook():
     print("Enviando webhook de teste para o agente...")
     print(f"URL: {AGENT_URL}\n")
 
@@ -67,4 +68,4 @@ def test():
 
 
 if __name__ == "__main__":
-    test()
+    send_sample_webhook()

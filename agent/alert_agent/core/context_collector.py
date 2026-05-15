@@ -77,14 +77,14 @@ def _otel_http_promql_filter(
 def _http_error_and_latency_promql_otel(filter_expr: str) -> tuple[str, str]:
     """PromQL OTel: taxa de erro HTTP (4xx/5xx) e latência p99."""
     http_error_rate = (
-        f'sum(rate(otel_http_server_duration_milliseconds_count{{'
+        f"sum(rate(otel_http_server_duration_milliseconds_count{{"
         f'{filter_expr},http_status_code=~"4..|5.."}}[5m])) '
-        f'/ sum(rate(otel_http_server_duration_milliseconds_count{{'
-        f'{filter_expr}}}[5m]))'
+        f"/ sum(rate(otel_http_server_duration_milliseconds_count{{"
+        f"{filter_expr}}}[5m]))"
     )
     http_latency_p99 = (
-        f'histogram_quantile(0.99, sum by (le) (rate('
-        f'otel_http_server_duration_milliseconds_bucket{{{filter_expr}}}[5m])))'
+        f"histogram_quantile(0.99, sum by (le) (rate("
+        f"otel_http_server_duration_milliseconds_bucket{{{filter_expr}}}[5m])))"
     )
     return http_error_rate, http_latency_p99
 
@@ -147,7 +147,11 @@ class ContextCollector:
             ),
             "http_error_rate": http_error_rate,
             "http_latency_p99": http_latency_p99,
-            "pod_restarts": f'kube_pod_container_status_restarts_total{{namespace="{ns}"}}' if ns else "",
+            "pod_restarts": (
+                f'kube_pod_container_status_restarts_total{{namespace="{ns}"}}'
+                if ns
+                else ""
+            ),
         }
 
         results: dict[str, dict] = {}
@@ -186,9 +190,7 @@ class ContextCollector:
         service = alert.service
         ns = alert.namespace
 
-        base_filter = _loki_app_env_base_filter(
-            alert.labels, service_fallback=service
-        )
+        base_filter = _loki_app_env_base_filter(alert.labels, service_fallback=service)
         if not base_filter:
             if ns:
                 base_filter = (
@@ -237,11 +239,13 @@ class ContextCollector:
                     or (sn and lbls.get("service_name") == sn)
                     or lbls.get("namespace") == alert.namespace
                 ) and lbls.get("alertname") != alert.title:
-                    related.append({
-                        "name": lbls.get("alertname"),
-                        "severity": lbls.get("severity"),
-                        "state": a.get("status", {}).get("state"),
-                    })
+                    related.append(
+                        {
+                            "name": lbls.get("alertname"),
+                            "severity": lbls.get("severity"),
+                            "state": a.get("status", {}).get("state"),
+                        }
+                    )
             return related[:10]
         except Exception as e:
             logger.warning(
@@ -255,6 +259,7 @@ class ContextCollector:
 # Simplificadores de resposta
 # ------------------------------------------------------------------
 
+
 def _simplify_prometheus(data: dict) -> dict:
     """Extrai apenas os valores relevantes da resposta Prometheus."""
     try:
@@ -262,11 +267,13 @@ def _simplify_prometheus(data: dict) -> dict:
         if not results:
             return {"value": None}
         simplified = []
-        for r in results[:5]:           # limita a 5 series
-            simplified.append({
-                "labels": r.get("metric", {}),
-                "value": r.get("value", [None, None])[1],
-            })
+        for r in results[:5]:  # limita a 5 series
+            simplified.append(
+                {
+                    "labels": r.get("metric", {}),
+                    "value": r.get("value", [None, None])[1],
+                }
+            )
         return {"series": simplified}
     except Exception:
         return {"raw": str(data)[:500]}
@@ -280,6 +287,6 @@ def _simplify_loki(data: dict) -> list[str]:
         for stream in streams:
             for ts, line in stream.get("values", []):
                 lines.append(line)
-        return lines[:30]               # máximo 30 linhas por categoria
+        return lines[:30]  # máximo 30 linhas por categoria
     except Exception:
         return []

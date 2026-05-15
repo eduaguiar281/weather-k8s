@@ -47,7 +47,9 @@ app = create_app()
 
 
 class LLMTestRequest(BaseModel):
-    message: str = Field(..., min_length=1, description="Mensagem do usuário para a LLM")
+    message: str = Field(
+        ..., min_length=1, description="Mensagem do usuário para a LLM"
+    )
     system: str | None = Field(
         default=None,
         description="Opcional: instruções de sistema (comportamento do assistente)",
@@ -87,7 +89,11 @@ async def receive_alert(request: Request, background_tasks: BackgroundTasks):
             "version": payload.get("version"),
             "truncated_alerts": truncated if isinstance(truncated, int) else 0,
             "title": payload.get("title"),
-            "alerts_count": len(payload.get("alerts") or []) if isinstance(payload.get("alerts"), list) else 1,
+            "alerts_count": (
+                len(payload.get("alerts") or [])
+                if isinstance(payload.get("alerts"), list)
+                else 1
+            ),
         },
     )
 
@@ -106,7 +112,10 @@ async def llm_test(body: LLMTestRequest):
     """
     logger.info(
         "POST /llm/test",
-        extra={"message_chars": len(body.message), "has_system": body.system is not None},
+        extra={
+            "message_chars": len(body.message),
+            "has_system": body.system is not None,
+        },
     )
     try:
         reply = await sre_agent.chat_test(body.message, body.system)
@@ -142,5 +151,7 @@ async def list_llm_result_download_urls_route():
             detail="BLOB_STORAGE não configurado",
         )
     rows = await list_llm_folder_download_urls()
-    files = [LLMResultFile(path=r["path"], download_url=r["download_url"]) for r in rows]
+    files = [
+        LLMResultFile(path=r["path"], download_url=r["download_url"]) for r in rows
+    ]
     return LLMResultFilesResponse(files=files)

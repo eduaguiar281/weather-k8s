@@ -62,9 +62,7 @@ class GrafanaClient:
             r.raise_for_status()
             return r.json()
 
-    async def query_prometheus_instant(
-        self, expr: str, datasource_uid: str
-    ) -> dict:
+    async def query_prometheus_instant(self, expr: str, datasource_uid: str) -> dict:
         """Executa uma query PromQL instantânea (valor mais recente)."""
         async with httpx.AsyncClient() as client:
             r = await client.get(

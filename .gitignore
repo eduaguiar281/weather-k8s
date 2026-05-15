@@ -8,3 +8,9 @@ agent/.env
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Cobertura de testes ( pytest-cov / coverage.py )
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

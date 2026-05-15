@@ -30,7 +30,7 @@ class AlertContext:
     """Alerta normalizado (webhook Grafana Alerting e/ou Prometheus Alertmanager)."""
 
     title: str
-    state: str                          # firing | resolved | pending
+    state: str  # firing | resolved | pending
     message: str
     labels: dict[str, str]
     annotations: dict[str, str]
@@ -91,13 +91,21 @@ def parse_webhook(payload: dict) -> list[AlertContext]:
         else ""
     )
 
-    common_labels = payload.get("commonLabels") if isinstance(payload.get("commonLabels"), dict) else {}
+    common_labels = (
+        payload.get("commonLabels")
+        if isinstance(payload.get("commonLabels"), dict)
+        else {}
+    )
     common_annotations = (
         payload.get("commonAnnotations")
         if isinstance(payload.get("commonAnnotations"), dict)
         else {}
     )
-    group_labels = payload.get("groupLabels") if isinstance(payload.get("groupLabels"), dict) else {}
+    group_labels = (
+        payload.get("groupLabels")
+        if isinstance(payload.get("groupLabels"), dict)
+        else {}
+    )
 
     fallback_title = (
         payload.get("title")
@@ -112,10 +120,17 @@ def parse_webhook(payload: dict) -> list[AlertContext]:
         if not isinstance(alert, dict):
             continue
 
-        labels = _merge_str_maps(common_labels, alert.get("labels") if isinstance(alert.get("labels"), dict) else {})
+        labels = _merge_str_maps(
+            common_labels,
+            alert.get("labels") if isinstance(alert.get("labels"), dict) else {},
+        )
         annotations = _merge_str_maps(
             common_annotations,
-            alert.get("annotations") if isinstance(alert.get("annotations"), dict) else {},
+            (
+                alert.get("annotations")
+                if isinstance(alert.get("annotations"), dict)
+                else {}
+            ),
         )
 
         raw_status = alert.get("status")
@@ -129,12 +144,20 @@ def parse_webhook(payload: dict) -> list[AlertContext]:
         title = labels.get("alertname") or fallback_title
 
         starts = alert.get("startsAt")
-        starts_at = starts if isinstance(starts, str) else (str(starts) if starts is not None else "")
+        starts_at = (
+            starts
+            if isinstance(starts, str)
+            else (str(starts) if starts is not None else "")
+        )
         ends = alert.get("endsAt")
-        ends_at = ends if isinstance(ends, str) else (str(ends) if ends is not None else "")
+        ends_at = (
+            ends if isinstance(ends, str) else (str(ends) if ends is not None else "")
+        )
 
         gen = alert.get("generatorURL") or alert.get("generator_url")
-        generator_url = gen if isinstance(gen, str) else (str(gen) if gen is not None else "")
+        generator_url = (
+            gen if isinstance(gen, str) else (str(gen) if gen is not None else "")
+        )
 
         contexts.append(
             AlertContext(
