@@ -62,8 +62,7 @@ def agent(fake_settings):
     publisher = SimpleNamespace(
         start=AsyncMock(),
         stop=AsyncMock(),
-        publish_analysis=AsyncMock(),
-        publish_resolved=AsyncMock(),
+        publish=AsyncMock(),
     )
 
     save = AsyncMock()
@@ -130,7 +129,7 @@ async def test_handle_firing_runs_llm_and_save(agent):
 
 @pytest.mark.asyncio
 async def test_handle_and_publish_resolved(agent):
-    ag, _, _, pub, _ = agent
+    ag, coll, llm, pub, _ = agent
     await ag.handle_and_publish(
         {
             "alerts": [
@@ -142,8 +141,12 @@ async def test_handle_and_publish_resolved(agent):
             ],
         }
     )
-    pub.publish_resolved.assert_awaited()
-    pub.publish_analysis.assert_not_called()
+    pub.publish.assert_awaited_once()
+    assert pub.publish.call_args.kwargs["analysis_text"] is None
+    coll.collect_metrics.assert_not_called()
+    coll.collect_logs.assert_not_called()
+    coll.collect_related_alerts.assert_not_called()
+    llm.invoke.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -160,7 +163,8 @@ async def test_handle_and_publish_firing(agent):
             ],
         }
     )
-    pub.publish_analysis.assert_awaited()
+    pub.publish.assert_awaited_once()
+    assert pub.publish.call_args.kwargs["analysis_text"]
 
 
 @pytest.mark.asyncio
@@ -177,8 +181,7 @@ async def test_handle_and_publish_unknown_state(agent):
             ],
         }
     )
-    pub.publish_analysis.assert_not_called()
-    pub.publish_resolved.assert_not_called()
+    pub.publish.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -219,8 +222,7 @@ async def test_analyze_with_truncation(fake_settings):
     publisher = SimpleNamespace(
         start=AsyncMock(),
         stop=AsyncMock(),
-        publish_analysis=AsyncMock(),
-        publish_resolved=AsyncMock(),
+        publish=AsyncMock(),
     )
     fake_settings.llm_max_user_prompt_chars = 800
     with patch("alert_agent.core.sre_analysis_agent.settings", fake_settings):

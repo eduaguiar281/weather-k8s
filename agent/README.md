@@ -163,7 +163,7 @@ uv run python test_webhook.py
 | Método | Path       | Descrição |
 |--------|------------|-----------|
 | GET    | /health    | Health check |
-| POST   | /webhook   | Recebe alertas do Grafana; responde **202 Accepted** (`{"status":"accepted"}`) e publica em background no RabbitMQ (`weather.agent.analysis` ou `weather.agent.resolved`) |
+| POST   | /webhook   | Recebe alertas do Grafana; responde **202 Accepted** (`{"status":"accepted"}`) e publica em background na fila **`weather.agent.analysis`** (mensagens JSON com `kind: "analysis"` ou `kind: "resolved"`) |
 | POST   | /llm/test  | Mensagem livre à LLM (validação do provider) |
 | GET    | /llm/download-urls | Lista SAS de leitura das pastas em `llm_results/` no Blob (requer `BLOB_STORAGE`) |
 
@@ -182,6 +182,8 @@ uv run python test_webhook.py
 | `RABBITMQ_ENABLED`  | Liga/desliga publicação AMQP                           | `true`                      |
 | `RABBITMQ_URL`      | URL AMQP (`guest`/`guest` no dev)                      | `amqp://guest:guest@rabbitmq:5672/` |
 | `RABBITMQ_EXCHANGE` | Exchange topic principal                               | `weather.agent`             |
-| `RABBITMQ_ANALYSIS_QUEUE` / `RABBITMQ_ANALYSIS_ROUTING_KEY` | Fila / routing de análises LLM | `weather.agent.analysis` / `analysis` |
-| `RABBITMQ_RESOLVED_QUEUE` / `RABBITMQ_RESOLVED_ROUTING_KEY` | Fila / routing de resolved      | `weather.agent.resolved` / `resolved` |
+| `RABBITMQ_ANALYSIS_QUEUE` / `RABBITMQ_ANALYSIS_ROUTING_KEY` | Fila / routing (**todas** as mensagens: análises LLM e resolved); consumidores distingam pelo campo `"kind"` | `weather.agent.analysis` / `analysis` |
+| `RABBITMQ_ANALYSIS_SINGLE_ACTIVE_CONSUMER` | `true`: declara a fila com `x-single-active-consumer` (FIFO entre réplicas). `false`: compatível com RabbitMQ onde a mesma queue já existe **sem** esse argumento (ex. volume Docker antigo); preferível antes recrear filas com `scripts/rabbitmq-reset-weather-agent-queues.sh` na raíz do repo | `true` |
 | `RABBITMQ_PUBLISH_TIMEOUT_SECONDS` | Timeout do publish com confirms          | `5.0`                       |
+
+Com `single_active_consumer=true`, ainda há DLX ligado a **`weather.agent.analysis.dlq`**. Para ordem estrita aos consumidores, use prefetch baixo (ex. `prefetch_count=1`). Alterar argumentos de uma fila existente pode exigir apagar/redeclarar a queue no RabbitMQ (erro tipo `PRECONDITION_FAILED`). Com fila legada sem SAC, ponha **`RABBITMQ_ANALYSIS_SINGLE_ACTIVE_CONSUMER=false`** temporariamente **ou** apague as queues do agent.

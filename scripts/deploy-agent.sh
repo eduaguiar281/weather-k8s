@@ -55,8 +55,6 @@ RABBITMQ_URL="${RABBITMQ_URL:-amqp://guest:guest@host.docker.internal:5672/}"
 RABBITMQ_EXCHANGE="${RABBITMQ_EXCHANGE:-weather.agent}"
 RABBITMQ_ANALYSIS_QUEUE="${RABBITMQ_ANALYSIS_QUEUE:-weather.agent.analysis}"
 RABBITMQ_ANALYSIS_ROUTING_KEY="${RABBITMQ_ANALYSIS_ROUTING_KEY:-analysis}"
-RABBITMQ_RESOLVED_QUEUE="${RABBITMQ_RESOLVED_QUEUE:-weather.agent.resolved}"
-RABBITMQ_RESOLVED_ROUTING_KEY="${RABBITMQ_RESOLVED_ROUTING_KEY:-resolved}"
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
@@ -83,8 +81,6 @@ kubectl create secret generic agent-secret \
   --from-literal=RABBITMQ_EXCHANGE="$RABBITMQ_EXCHANGE" \
   --from-literal=RABBITMQ_ANALYSIS_QUEUE="$RABBITMQ_ANALYSIS_QUEUE" \
   --from-literal=RABBITMQ_ANALYSIS_ROUTING_KEY="$RABBITMQ_ANALYSIS_ROUTING_KEY" \
-  --from-literal=RABBITMQ_RESOLVED_QUEUE="$RABBITMQ_RESOLVED_QUEUE" \
-  --from-literal=RABBITMQ_RESOLVED_ROUTING_KEY="$RABBITMQ_RESOLVED_ROUTING_KEY" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # ── ArgoCD Application ────────────────────────────────────────────────────────
@@ -111,7 +107,7 @@ echo "==> [AGENT] Forçando rollout para pegar nova imagem..."
 kubectl rollout restart deployment/alert-agent -n "$NAMESPACE"
 
 echo "==> [AGENT] Aguardando rollout..."
-kubectl rollout status deployment/alert-agent -n "$NAMESPACE" --timeout=120s
+kubectl rollout status deployment/alert-agent -n "$NAMESPACE" --timeout=300s
 
 # ── Port-forward ──────────────────────────────────────────────────────────────
 

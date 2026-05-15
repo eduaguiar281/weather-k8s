@@ -104,7 +104,7 @@ class SreAnalysisAgent:
         return await self.analyze_firing_or_pending(alert)
 
     async def handle_and_publish(self, payload: dict) -> None:
-        """Processamento em background: publica em analysis ou resolved no RabbitMQ."""
+        """Processamento em background: todas as mensagens vão para a fila de análise (AMQP)."""
         alert = parse_first_alert(payload)
 
         if alert is None:
@@ -121,11 +121,11 @@ class SreAnalysisAgent:
 
         try:
             if alert.state == "resolved":
-                await self._publisher.publish_resolved(alert)
+                await self._publisher.publish(alert, analysis_text=None)
                 return
             if alert.state in ("firing", "pending"):
                 analysis = await self.analyze_firing_or_pending(alert)
-                await self._publisher.publish_analysis(alert, analysis)
+                await self._publisher.publish(alert, analysis_text=analysis)
                 return
             logger.warning(
                 "Unknown alert state, skipping RabbitMQ publish",

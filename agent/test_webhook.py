@@ -60,8 +60,8 @@ def send_sample_webhook():
         print(json.dumps(data, indent=2, ensure_ascii=False))
         if r.status_code == 202:
             print(
-                "\n(202 Accepted) O processamento é assíncrono; a análise LLM vai para "
-                "a fila RabbitMQ `weather.agent.analysis` quando o alerta está firing/pending."
+                "\n(202 Accepted) O processamento é assíncrono; RabbitMQ fila "
+                "`weather.agent.analysis` (`kind: analysis` ou `kind: resolved`)."
             )
     except Exception:
         print(r.text)

@@ -1,0 +1,12 @@
+# Mantém o .venv criado por `RUN uv sync` dentro da imagem Linux;
+# caso contrário o `COPY . .` trazia o .venv macOS do host e o uvicorn falhava (exec … no such file).
+.venv/
+__pycache__/
+.git/
+.pytest_cache/
+*.pyc
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/

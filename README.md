@@ -168,12 +168,11 @@ Variáveis opcionais (têm padrão):
 | `LLM_BASE_URL` | _(vazio)_ | Proxies/OpenAI-compat: **LM Studio** → `http://host.docker.internal:<porta>/v1` (**não** `/api/v1`) |
 | `RABBITMQ_URL` | `amqp://guest:guest@host.docker.internal:5672/` | AMQP usando a porta publicada no host (Compose mapeia `5672`) |
 | `RABBITMQ_EXCHANGE` | `weather.agent` | Exchange topic principal |
-| `RABBITMQ_ANALYSIS_QUEUE` / `RABBITMQ_ANALYSIS_ROUTING_KEY` | `weather.agent.analysis` / `analysis` | Fila de análises (LLM) |
-| `RABBITMQ_RESOLVED_QUEUE` / `RABBITMQ_RESOLVED_ROUTING_KEY` | `weather.agent.resolved` / `resolved` | Fila de alertas resolvidos (sem LLM) |
+| `RABBITMQ_ANALYSIS_QUEUE` / `RABBITMQ_ANALYSIS_ROUTING_KEY` | `weather.agent.analysis` / `analysis` | Fila única: análises LLM (`kind: analysis`) e resolved (`kind: resolved`); consumidor com **prefetch baixo** para ordem estrita; o agente declara `x-single-active-consumer` na fila |
 
 > **Redes Docker × Kind:** Na rede externa `observability_observability` (referenciada pelo Compose como `kind_bridge`), ficam apenas **OpenTelemetry Collector** (`172.23.0.50`), **Loki** (`172.23.0.51`) e **RabbitMQ** (`172.23.0.52`). **Grafana não tem IP na `kind_bridge`** — ele está só na rede interna `observability`; por isso o agente deve usar **`http://host.docker.internal:3000`** ou outro nome que alcance o host onde o Grafana expõe a porta **3000**. Em Linux pode ser preciso garantir que `host.docker.internal` existe (Compose já usa `host-gateway` no Alertmanager como referência).
 
-**Webhook e filas:** o `POST /webhook` responde **202 Accepted** com `{"status":"accepted"}` e processa em background: alertas **firing/pending** geram mensagem JSON na fila `weather.agent.analysis` (com texto da LLM); **resolved** vai para `weather.agent.resolved` (sem LLM). Suba o stack com `docker compose up -d` para ter o RabbitMQ (AMQP `5672`, Management **http://localhost:15672**, usuário/senha `guest`/`guest`).
+**Webhook e filas:** o `POST /webhook` responde **202 Accepted** com `{"status":"accepted"}` e processa em background: todas as mensagens vão para **`weather.agent.analysis`**. Os campos JSON `kind: "analysis"` (com texto LLM) ou `kind: "resolved"` distinguem firing/pending vs resolvido — **resolved** não passa por LLM nem colecção de métricas/logs no agente. Suba o stack com `docker compose up -d` para ter o RabbitMQ (AMQP `5672`, Management **http://localhost:15672**, usuário/senha `guest`/`guest`). Migrar consumidores da antiga `weather.agent.resolved` para esta fila; se a fila já existir no broker sem `x-single-active-consumer`, pode ser necessário alinhar a topologia (recriar a fila).
 
 Exemplo de consumer local (`aio-pika`):
 
@@ -191,7 +190,6 @@ async def drain(queue_name: str):
                     print(msg.body.decode())
 
 asyncio.run(drain("weather.agent.analysis"))
-# asyncio.run(drain("weather.agent.resolved"))
 ```
 
 **8.2 — Execute o deploy:**

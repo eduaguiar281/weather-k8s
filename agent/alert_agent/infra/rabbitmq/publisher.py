@@ -1,5 +1,9 @@
 """
-Publicação de análises e eventos resolved no RabbitMQ (AMQP).
+Publicação de resultados do webhook no RabbitMQ (AMQP).
+
+Todas as mensagens ("analysis" / "resolved") usam `rabbitmq_analysis_routing_key`.
+A fila principal pode declarar `x-single-active-consumer` (FIFO); desligável via settings
+para brokers com filas legadas já criadas sem esse argumento.
 """
 
 from __future__ import annotations
@@ -9,9 +13,11 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+
 import aio_pika
 from aio_pika import DeliveryMode, ExchangeType, Message
 from aio_pika.exceptions import DeliveryError
+from aiormq.exceptions import ChannelPreconditionFailed
 
 from alert_agent.config import settings
 from alert_agent.core.alert_parser import AlertContext
@@ -39,7 +45,18 @@ class RabbitPublisher:
             return
         self._connection = await aio_pika.connect_robust(settings.rabbitmq_url)
         self._channel = await self._connection.channel(publisher_confirms=True)
-        await self._declare_topology()
+        try:
+            await self._declare_topology()
+        except ChannelPreconditionFailed as e:
+            logger.error(
+                "RabbitMQ queue declaration failed (PRECONDITION_FAILED). "
+                "A fila provavelmente já existia com argumentos diferentes ao pedido atual "
+                "(ex.: x-single-active-consumer vs legado sem SAC). Soluções: apagar/recreado "
+                "as filas do agent no broker (scripts/rabbitmq-reset-weather-agent-queues.sh no repo), "
+                "ou definir RABBITMQ_ANALYSIS_SINGLE_ACTIVE_CONSUMER=false se a queue actual não usa SAC.",
+                extra={"event": "rabbitmq_declaration_precondition", "detail": repr(e)},
+            )
+            raise
         self._started = True
         logger.info(
             "RabbitMQ publisher connected",
@@ -70,28 +87,24 @@ class RabbitPublisher:
         dlq_analysis = await ch.declare_queue(s.rabbitmq_analysis_dlq, durable=True)
         await dlq_analysis.bind(dlx, routing_key=s.rabbitmq_analysis_routing_key)
 
-        dlq_resolved = await ch.declare_queue(s.rabbitmq_resolved_dlq, durable=True)
-        await dlq_resolved.bind(dlx, routing_key=s.rabbitmq_resolved_routing_key)
-
         main_ex = await ch.declare_exchange(
             s.rabbitmq_exchange,
             ExchangeType.TOPIC,
             durable=True,
         )
 
+        queue_args: dict[str, object] = {
+            "x-dead-letter-exchange": s.rabbitmq_dlx_exchange,
+        }
+        if s.rabbitmq_analysis_single_active_consumer:
+            queue_args["x-single-active-consumer"] = True
+
         q_analysis = await ch.declare_queue(
             s.rabbitmq_analysis_queue,
             durable=True,
-            arguments={"x-dead-letter-exchange": s.rabbitmq_dlx_exchange},
+            arguments=queue_args,
         )
         await q_analysis.bind(main_ex, routing_key=s.rabbitmq_analysis_routing_key)
-
-        q_resolved = await ch.declare_queue(
-            s.rabbitmq_resolved_queue,
-            durable=True,
-            arguments={"x-dead-letter-exchange": s.rabbitmq_dlx_exchange},
-        )
-        await q_resolved.bind(main_ex, routing_key=s.rabbitmq_resolved_routing_key)
 
         self._exchange = main_ex
 
@@ -130,10 +143,16 @@ class RabbitPublisher:
             },
         )
 
-    async def publish_analysis(self, alert: AlertContext, analysis: str) -> None:
-        """Publica análise LLM (firing/pending)."""
-        kind = "analysis"
+    async def publish(self, alert: AlertContext, *, analysis_text: str | None) -> None:
+        """
+        Publica na fila de análise (routing principal).
+
+        `analysis_text is None` → JSON `kind: resolved`; qualquer outro valor
+        (por exemplo texto da LLM) → `kind: analysis` com campo `"analysis"`.
+        """
         rk = settings.rabbitmq_analysis_routing_key
+        kind = "analysis" if analysis_text is not None else "resolved"
+
         if not settings.rabbitmq_enabled:
             logger.info(
                 "RabbitMQ publish skipped (disabled)",
@@ -145,6 +164,7 @@ class RabbitPublisher:
                 },
             )
             return
+
         if not self._exchange:
             self._log_publish_failure(
                 event="publisher_drop",
@@ -154,84 +174,36 @@ class RabbitPublisher:
                 error=RuntimeError(
                     "RabbitMQ exchange not initialized (did start() run?)"
                 ),
-                analysis=analysis,
+                analysis=analysis_text,
             )
             return
 
         env = os.getenv("ENV", "prod")
+        alert_block = {
+            "title": alert.title,
+            "state": alert.state,
+            "severity": alert.severity,
+            "service": alert.service,
+            "namespace": alert.namespace,
+            "fingerprint": alert.fingerprint,
+            "starts_at": alert.starts_at,
+            "ends_at": alert.ends_at,
+        }
         body = {
             "env": env,
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "kind": "analysis",
-            "alert": {
-                "title": alert.title,
-                "state": alert.state,
-                "severity": alert.severity,
-                "service": alert.service,
-                "namespace": alert.namespace,
-                "fingerprint": alert.fingerprint,
-                "starts_at": alert.starts_at,
-                "ends_at": alert.ends_at,
-            },
-            "analysis": analysis,
+            "kind": kind,
+            "alert": alert_block,
         }
+        if analysis_text is not None:
+            body["analysis"] = analysis_text
+
         await self._publish_json(
             body=body,
             kind=kind,
             alert=alert,
             routing_key=rk,
-            analysis=analysis,
-        )
-
-    async def publish_resolved(self, alert: AlertContext) -> None:
-        """Publica evento resolved (sem LLM)."""
-        kind = "resolved"
-        rk = settings.rabbitmq_resolved_routing_key
-        if not settings.rabbitmq_enabled:
-            logger.info(
-                "RabbitMQ publish skipped (disabled)",
-                extra={
-                    "event": "publisher_disabled",
-                    "kind": kind,
-                    "alert_title": alert.title,
-                    "routing_key": rk,
-                },
-            )
-            return
-        if not self._exchange:
-            self._log_publish_failure(
-                event="publisher_drop",
-                kind=kind,
-                alert=alert,
-                routing_key=rk,
-                error=RuntimeError(
-                    "RabbitMQ exchange not initialized (did start() run?)"
-                ),
-            )
-            return
-
-        env = os.getenv("ENV", "prod")
-        body = {
-            "env": env,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "kind": "resolved",
-            "alert": {
-                "title": alert.title,
-                "state": alert.state,
-                "severity": alert.severity,
-                "service": alert.service,
-                "namespace": alert.namespace,
-                "fingerprint": alert.fingerprint,
-                "starts_at": alert.starts_at,
-                "ends_at": alert.ends_at,
-            },
-        }
-        await self._publish_json(
-            body=body,
-            kind=kind,
-            alert=alert,
-            routing_key=rk,
-            analysis=None,
+            analysis=analysis_text,
         )
 
     async def _publish_json(

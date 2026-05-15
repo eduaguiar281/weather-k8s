@@ -75,9 +75,9 @@ class Settings(BaseSettings):
     rabbitmq_analysis_queue: str = "weather.agent.analysis"
     rabbitmq_analysis_routing_key: str = "analysis"
     rabbitmq_analysis_dlq: str = "weather.agent.analysis.dlq"
-    rabbitmq_resolved_queue: str = "weather.agent.resolved"
-    rabbitmq_resolved_routing_key: str = "resolved"
-    rabbitmq_resolved_dlq: str = "weather.agent.resolved.dlq"
+    #: Se a fila já existia no RabbitMQ sem SAC, declarar True falha PRECONDITION_FAILED
+    #: até remover/recriar a fila ou pôr `RABBITMQ_ANALYSIS_SINGLE_ACTIVE_CONSUMER=false`.
+    rabbitmq_analysis_single_active_consumer: bool = True
     rabbitmq_publish_timeout_seconds: float = 5.0
 
     debug_llm_result: bool = False
