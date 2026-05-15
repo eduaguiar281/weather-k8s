@@ -63,6 +63,17 @@ class Settings(BaseSettings):
     # 0 = sem truncamento. Para LM Studio / llama.cpp com n_ctx≈4096, use ~2048–4096 e
     # aumente n_ctx no servidor se precisar de mais contexto.
     llm_max_user_prompt_chars: int = 0
+    # Layout do prompt: índice único de queries + métricas sem repetir PromQL em cada bloco.
+    llm_prompt_compact_queries: bool = True
+    llm_max_log_lines_per_category: int = 8
+    llm_max_log_line_chars: int = 220
+    # CSV de chaves de label incluídas primeiro em «Labels (prioridade SRE)»; vazio = default interno.
+    llm_label_keys_allowlist: str = (
+        "alertname,severity,namespace,service_name,deployment_environment,"
+        "environment,env,stage,job,service,app,app_name,pod,instance,container"
+    )
+    # 0 = sem limite explícito na API (comportamento do provider).
+    llm_max_output_tokens: int = 0
 
     # RabbitMQ (publicação de análises / resolved)
     rabbitmq_enabled: bool = True

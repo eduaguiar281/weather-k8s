@@ -28,6 +28,7 @@ only-include = [
     "grafana_client.py",
     "rabbit_publisher.py",
     "llm_blob_storage.py",
+    "llm_usage.py",
     "test_webhook.py",
 ]
 
